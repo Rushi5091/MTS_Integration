@@ -9,7 +9,8 @@ using Project.API.Configuration;
 using Project.Core.Entities.Business;
 using System.Net;
 using System.Text;
-using Bogus.Bson;
+using Newtonsoft.Json;
+
 
 namespace Project.Infrastructure.Repositories
 {
@@ -79,19 +80,281 @@ namespace Project.Infrastructure.Repositories
             var results_ref = await _dbConnection.QueryAsync(storedProcedureName, values2, commandType: CommandType.StoredProcedure);
             dynamic result_ref = (dynamic)results_ref.FirstOrDefault();
 
-            if (api_id == 15)
+            if (api_id == 3)
+            {
+                #region DataField API
+
+                string Beneficiary_Name = Convert.ToString(result.Beneficiary_Name);
+
+                string company_id = "";
+                string Clientid = "";
+                string Agentcode = "";
+                string FrSubagent = "";
+                string Headers = "";
+
+                if (api_id == 3 && api_fields != "" && api_fields != null)
+                {
+                    Newtonsoft.Json.Linq.JObject obj = Newtonsoft.Json.Linq.JObject.Parse(api_fields);
+                    company_id = Convert.ToString(obj["company_id"]);
+                    Clientid = Convert.ToString(obj["Clientid"]);
+                    Agentcode = Convert.ToString(obj["Agentcode"]);
+                    FrSubagent = Convert.ToString(obj["FrSubagent"]);
+                    Headers = Convert.ToString(obj["Headers"]);
+                }
+
+
+
+
+
+
+                string benf_ISO_Code = "";
+                string Issue_Datemdy = "";
+                string sendernationality = "";
+                string SenderID_ExpiryDateymd = "";
+                string Purpose = "";
+                string ReferenceNo = "";
+                string AmountInGBP = "";
+                string AmountInPKR = "";
+                string Phone_Number = "";
+                string Mobile_Number = "";
+                string Beneficiary_Name1 = "";
+                string Beneficiary_Address = "";
+                string Beneficiary_Mobile = "";
+                string SenderID_Number = "";
+                string Customer_Name = "";
+                string Beneficiary_City = "";
+                string Beneficiary_Country = "";
+                string sender_address = "";
+                string City_Name = "";
+                string ID_Name = "";
+                string FromCurrency_Code = "";
+                string Currency_Code = "";
+                string sendercountrycode = "";
+                var encryptedData = "";
+                var bodyJson = "";
+                string Customer_ID = result.Customer_ID.ToString();
+
+                Purpose = result.Purpose.ToString();//
+                ReferenceNo = result.ReferenceNo.ToString();//
+                AmountInGBP = result.AmountInGBP.ToString();//
+                AmountInPKR = result.AmountInPKR.ToString();//
+                Phone_Number = result.Phone_Number.ToString();//sender
+                Mobile_Number = result.Mobile_Number.ToString();//sender
+                Beneficiary_Name1 = result.Beneficiary_Name1.ToString();//
+                Beneficiary_Address = result.Beneficiary_Address.ToString();//
+                Beneficiary_Mobile = result.Beneficiary_Mobile.ToString();//
+                Customer_Name = result.Customer_Name.ToString();//
+                Beneficiary_City = result.Beneficiary_City.ToString();//
+                sender_address = result.sender_address.ToString();//
+                City_Name = result.City_Name.ToString();//sender
+                SenderID_Number = result.SenderID_Number.ToString();//
+                ID_Name = result.ID_Name.ToString();//sender
+                FromCurrency_Code = result.FromCurrency_Code.ToString();//sender
+                Currency_Code = result.Currency_Code.ToString();//benef
+                Issue_Datemdy = result.Issue_Datemdy.ToString();
+                sendernationality = result.sendernationality.ToString();
+                SenderID_ExpiryDateymd = result.SenderID_ExpiryDateymd.ToString();
+                benf_ISO_Code = result.benf_ISO_Code.ToString();
+                sendercountrycode = result.sendercountrycode.ToString();
+
+
+                string username = apiuser;
+                string password = apipass;
+
+                var options = new RestClientOptions(apiurl + "/api/Token")
+                {
+                    MaxTimeout = -1
+                };
+                var client = new RestClient(options);
+                var request = new RestRequest()
+                {
+                    Method = Method.Post
+                };
+                string credentials = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{username}:{password}"));
+                request.AddHeader("Authorization", $"Basic {credentials}");
+                string req = apiurl + "/api/Token" + credentials;
+                await SaveActivityLogTracker("Datafield Create Token Request From MTS_Integration: <br/>" + req + "", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "Proceed", entity.Branch_ID, Client_ID);
+
+                var response = client.Execute(request);
+                await SaveActivityLogTracker("Datafield Create Token Response From MTS_Integration: <br/>" + response.Content + "", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "Proceed", entity.Branch_ID, Client_ID);
+
+
+                if (response.StatusCode == System.Net.HttpStatusCode.OK)
+                {
+                    dynamic json = JsonConvert.DeserializeObject(response.Content);
+                    string token = json.Token;
+                    double ReceivedAmount_rate = 0.0;
+                    string isFixed = "";
+                    string isRate = "";
+                    double ReceivedComm_rate = 0.0;
+                    double buyingRatePay = 0.0;
+                    double sellingRateLoc = 0.0;
+                    double ratePayRate = 0.0;
+                    double buyingRateLoc = 0.0;
+                    double sellingRatePay = 0.0;
+
+                    string ToCurrency = Currency_Code;
+                    string FrCurrency = FromCurrency_Code;
+
+                    double PayoutAmount = Convert.ToDouble(AmountInPKR);
+
+
+
+                    ReceivedAmount_rate = PayoutAmount / ratePayRate;
+                    ReceivedAmount_rate = Math.Round(ReceivedAmount_rate, 2);
+
+
+                    double Ammount = ReceivedAmount_rate * buyingRateLoc;
+                    Ammount = Math.Round(Ammount, 2);
+
+                    try
+                    {
+
+
+                        options = new RestClientOptions(apiurl + "/api/RmtStatus")
+                        {
+                            MaxTimeout = -1
+                        };
+                        client = new RestClient(options);
+                        request = new RestRequest()
+                        {
+                            Method = Method.Post
+                        };
+                        request.AddHeader(Headers, token);
+                        request.AddHeader("Content-Type", "application/json");
+                        request.AddHeader("Authorization", $"Basic {credentials}");
+
+                        var body3 = new
+                        {
+                            Transno = ReferenceNo,
+                        };
+                        bodyJson = JsonConvert.SerializeObject(body3);
+
+                        encryptedData = Encrypt(bodyJson);
+
+                        var requestBody4 = new
+                        {
+                            jsonstring = encryptedData
+                        };
+                        request.AddParameter("application/json", JsonConvert.SerializeObject(requestBody4), ParameterType.RequestBody);
+                        req = apiurl + "/api/RmtStatus" + body3 + "jsonstring :" + requestBody4;
+                        await SaveActivityLogTracker("Datafield Check Status Request: <br/>" + req + "", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "TransactionStatus", entity.Branch_ID, Client_ID);
+
+                        response = client.Execute(request);
+                        json = JsonConvert.DeserializeObject(response.Content);
+                        await SaveActivityLogTracker("Datafield Check Status Response: <br/>" + response.Content + "", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "TransactionStatus", entity.Branch_ID, Client_ID);
+
+                        string Status1 = (string)json["Status"];
+                        string wstransid1 = (string)json["wstransid"];
+                        string Rmtno1 = (string)json["Rmtno"];
+
+                        if (Status1 != "")
+                        {
+
+                            if (Status1 == "Paid")
+                            {
+                                return new TransactionStatusResponseViewModel
+                                {
+                                    Status = "Success",
+                                    StatusCode = 0,
+                                    Message = "Transaction Status is Paid",
+                                    ApiId = Transaction_ID,
+                                    AgentRate = AgentRateapi,
+                                    ApiStatus = apistatus,
+                                    ExtraFields = new List<string> { "", "" }
+                                };
+                            }
+                            else if (Status1 == "Cancel")
+                            {
+                                return new TransactionStatusResponseViewModel
+                                {
+                                    Status = "Success",
+                                    StatusCode = 2,
+                                    Message = "Transaction Status is Cancelled",
+                                    ApiId = Transaction_ID,
+                                    AgentRate = AgentRateapi,
+                                    ApiStatus = apistatus,
+                                    ExtraFields = new List<string> { "", "" }
+                                };
+                            }
+                            else if (Status1 == "Stop")
+                            {
+                                return new TransactionStatusResponseViewModel
+                                {
+                                    Status = "Success",
+                                    StatusCode = 4,
+                                    Message = "Transaction status is Stop",
+                                    ApiId = Transaction_ID,
+                                    AgentRate = AgentRateapi,
+                                    ApiStatus = apistatus,
+                                    ExtraFields = new List<string> { "", "" }
+                                };
+                            }
+                            else if (Status1 == "Ready")
+                            {
+                                return new TransactionStatusResponseViewModel
+                                {
+                                    Status = "Success",
+                                    StatusCode = 4,
+                                    Message = "Transaction status is Ready",
+                                    ApiId = Transaction_ID,
+                                    AgentRate = AgentRateapi,
+                                    ApiStatus = apistatus,
+                                    ExtraFields = new List<string> { "", "" }
+                                };
+                            }
+                            else
+                            {
+                                return new TransactionStatusResponseViewModel
+                                {
+                                    Status = "Success",
+                                    StatusCode = 1,
+                                    Message = "Transaction Status is " + Status1,
+                                    ApiId = Transaction_ID,
+                                    AgentRate = AgentRateapi,
+                                    ApiStatus = apistatus,
+                                    ExtraFields = new List<string> { "", "" }
+                                };
+                            }
+                        }
+
+                    }
+                    catch (Exception ex)
+                    {
+                        await SaveErrorLogAsync(ex.ToString(), DateTime.Now, "Datafield RmtStatus Call", entity.user_id, entity.Branch_ID, Client_ID, 0);
+
+                    }
+
+
+                }
+                else
+                {
+                    return new TransactionStatusResponseViewModel
+                    {
+                        Status = "Success",
+                        StatusCode = 3,
+                        Message = "Token not generated",
+                        ApiId = Transaction_ID,
+                        AgentRate = AgentRateapi,
+                        ApiStatus = apistatus,
+                        ExtraFields = new List<string> { "", "" }
+                    };
+                }
+                #endregion
+            }
+            else if (api_id == 15)
             {
                 #region amal
 
-        
+
                 int PaymentDepositType_ID = Convert.ToInt32(result.PaymentDepositType_ID);
 
                 string clientkey = "";
                 string secretkey = "";
                 if (PaymentDepositType_ID == 1 || PaymentDepositType_ID == 2 || PaymentDepositType_ID == 3)
                 {
-                     string Username_api = ""; string password_api = ""; string clientkey_api = ""; string SourceBranchkey_api = "";
-                  
+                    string Username_api = ""; string password_api = ""; string clientkey_api = ""; string SourceBranchkey_api = "";
+
                     if (api_fields != "" && api_fields != null)
                     {
                         Newtonsoft.Json.Linq.JObject obj12 = Newtonsoft.Json.Linq.JObject.Parse(api_fields);
@@ -179,7 +442,7 @@ namespace Project.Infrastructure.Repositories
                     if (json["response"]["result"]["Transaction"]["TransactionDetails"]["TransactionStatus"].ToString() == "paid")
                     {
 
-                        
+
                         return new TransactionStatusResponseViewModel
                         {
                             Status = "Success",
@@ -235,7 +498,7 @@ namespace Project.Infrastructure.Repositories
 
 
                 }
-             
+
                 #endregion
             }
             else if (api_id == 45)
@@ -402,6 +665,164 @@ namespace Project.Infrastructure.Repositories
                     await SaveErrorLogAsync(ex.ToString(), DateTime.Now, "TransactionStatus", entity.user_id, entity.Branch_ID, Client_ID, 0);
                 }
                 #endregion Budpay
+            }
+            else if (api_id == 49)// HelloPaisa -- pradip
+            {
+                string Customer_ID = result.Customer_ID.ToString();
+                //await SaveActivityLogTracker("Hello Paisa check Status API start: <br/>", 0, 0, 0, 0, "Hello Paisa Proceed", 0, 0);
+                await SaveActivityLogTracker("Hello Paisa check Status API start: < br />", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "TransactionStatus", entity.Branch_ID, Client_ID);
+
+                string RoutingCode = "";
+                if (api_fields != "" && api_fields != null)
+                {
+                    Newtonsoft.Json.Linq.JObject obj = Newtonsoft.Json.Linq.JObject.Parse(api_fields);
+                    RoutingCode = Convert.ToString(obj["Routingcode"]);
+                }
+
+                try
+                {
+                    string credentials = $"{apiuser}:{apipass}";
+                    string encodedCredentials = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(credentials));
+
+                    DateTime dateTime = DateTime.Now;
+                    //c.BranchListAPI_ID = api_id;
+                    //c.Is_Procedure = "QUERY";
+                    //c.Operation_Name = "Proceed_mail_details";
+
+                    // dt = da;
+                    //string TransRefNo = Convert.ToString(dt.Rows[0]["APITransaction_ID"]);
+                    //string API_BranchDetails = Convert.ToString(dt.Rows[0]["API_BranchDetails"]);
+                    //string ReferenceNo = Convert.ToString(dt.Rows[0]["ReferenceNo"]);
+
+                    string TransRefNo = Convert.ToString(result.APITransaction_ID);
+                    string API_BranchDetails = Convert.ToString(result.API_BranchDetails);
+                    string ReferenceNo = Convert.ToString(result.ReferenceNo);
+
+
+                    //string ReferenceNo = Convert.ToString(result.ReferenceNo);
+                    //string scountry = Convert.ToString(result.ISO_Code);
+                    //string Customer_ID = result.Customer_ID.ToString();
+
+                    string DCode = "";
+                    string BankRoute = "";
+                    if (!string.IsNullOrWhiteSpace(TransRefNo) && TransRefNo.Contains("-"))
+                    {
+                        string[] parts = TransRefNo.Split('-');
+                        if (parts.Length == 2)
+                        {
+                            DCode = parts[0];
+                            BankRoute = parts[1];
+                        }
+                    }
+
+                    string Temp_url = apiurl + "/checkStatus";// https://dcmtest.nvizible.co.za/api/checkStatus
+                    //var clientcheckStatus = new RestClient(Temp_url);
+                    //clientcheckStatus.Timeout = -1;
+                    //var requestcheckStatus = new RestRequest();
+                    //requestcheckStatus.Method = Method.POST;
+
+                    var options = new RestClientOptions(Temp_url)
+                    {
+                        MaxTimeout = -1
+                    };
+                    var clientcheckStatus = new RestClient(options);
+                    var requestcheckStatus = new RestRequest()
+                    {
+                        Method = Method.Post
+                    };
+
+
+                    requestcheckStatus.AddHeader("Authorization", "Basic " + encodedCredentials);
+                    requestcheckStatus.AddHeader("Content-Type", "application/json");
+                    var body1 = @"{
+" + "\n" +
+@"  ""DcmRequest"": [
+" + "\n" +
+@"    {
+" + "\n" +
+@"      ""ReferenceNo"": """ + API_BranchDetails + @""",
+" + "\n" +
+@"      ""RoutingCode"": """ + RoutingCode + @""",
+" + "\n" +
+@"      ""BankRoute"": """ + BankRoute + @""",
+" + "\n" +
+@"      ""Action"": ""checkStatus"",
+" + "\n" +
+@"      ""DCode"": """ + DCode + @""",
+" + "\n" +
+@"      ""DcmLogin"": {
+" + "\n" +
+@"        ""userId"": """ + accesscode + @"""
+" + "\n" +
+@"      }
+" + "\n" +
+@"    }
+" + "\n" +
+                    @"  ]
+"
+                    + "\n" +
+                    @"}";
+
+                    // mtsmethods.InsertActivityLogDetails("Hello Paisa check Status response post: <br/>" + body1 + "", 0, 0, 0, 0, "Hello Paisa Proceed", 0, 0);
+                    await SaveActivityLogTracker("Hello Paisa check Status response post: <br/>" + body1 + "", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "TransactionStatus", entity.Branch_ID, Client_ID);
+
+                    requestcheckStatus.AddParameter("application/json", body1, ParameterType.RequestBody);
+                    RestResponse responsecheckStatus = clientcheckStatus.Execute(requestcheckStatus);
+                    //mtsmethods.InsertActivityLogDetails("Hello Paisa check Status response post: <br/>" + responsecheckStatus.Content + "", 0, 0, 0, 0, "Hello Paisa Proceed", 0, 0);
+                    await SaveActivityLogTracker("Hello Paisa check Status response post: <br/>" + responsecheckStatus.Content + "", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "TransactionStatus", entity.Branch_ID, Client_ID);
+
+                    dynamic dJson = Newtonsoft.Json.JsonConvert.DeserializeObject(responsecheckStatus.Content);
+                    var responseCode = dJson.DcmResponse.responseCode;
+                    string message = dJson.DcmResponse.responseMessage;
+                    //if (responseCode != null)
+                    //{
+                    //    if (responseCode == 200) { ds.Rows.Add(0, "Paid", message); return ds; }
+                    //    else if (message.StartsWith("fail", StringComparison.OrdinalIgnoreCase) || message.IndexOf("fail", StringComparison.OrdinalIgnoreCase) >= 0) { ds.Rows.Add(5, "PAID", 0); return ds; }
+                    //    else if (responseCode == 449 || responseCode == 206) { ds.Rows.Add(4, " Transaction Status is Pending : " + message, ""); return ds; }
+                    //    else { ds.Rows.Add(3, message, status); return ds; }
+                    //}
+                    //else { ds.Rows.Add(3, message + " " + responseCode, "NO_STATUS"); }
+                    TransactionStatusResponseViewModel response = new TransactionStatusResponseViewModel();
+
+                    if (responseCode != null)
+                    {
+                        if (responseCode == 200)
+                        {
+                            response.Status = "Paid";
+                            response.StatusCode = 0;
+                            response.Message = "Transaction Paid Successfully";
+                        }
+                        else
+                        {
+                            // return whatever status comes from API
+                            response.Status = "Un-Paid";
+                            response.StatusCode = 5; // or map based on apistatus if needed
+                            response.Message = message;
+                        }
+                    }
+                    else
+                    {
+                        // responseCode null or empty → error
+                        response.Status = "Error";
+                        response.StatusCode = 3;
+                        response.Message = "Invalid or missing response code from API";
+                    }
+
+                    // common fields
+                    response.ApiId = Transaction_ID;
+                    response.AgentRate = AgentRateapi;
+                    response.ApiStatus = apistatus;
+                    response.ExtraFields = new List<string> { "", "" };
+
+                    return response;
+
+
+
+                }
+                catch (Exception ex)
+                {
+                    await SaveErrorLogAsync("API Hello Paisa transaction Status ERROR " + ex.ToString() + " " + entity.Transaction_ID, DateTime.Now, "CheckStatus", entity.user_id, entity.Branch_ID, Client_ID, 0);
+                }
             }
             else
             {

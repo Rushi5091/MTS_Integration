@@ -1,16 +1,16 @@
-﻿using Dapper;
+﻿using Bogus.DataSets;
+using Dapper;
 using Microsoft.Extensions.Options;
+using Newtonsoft.Json; // Add this line
 using Newtonsoft.Json.Linq;
+using Project.API.Configuration;
+using Project.Core.Entities.Business;
 using Project.Core.Entities.General;
 using Project.Core.Interfaces.IRepositories;
 using RestSharp;
 using System.Data;
-using Project.API.Configuration;
-using MySql.Data.MySqlClient;
-using System.Data.Common;
-using Project.Core.Entities.Business;
+using System.Net;
 using System.Text;
-using System.Net; // Add this line
 
 namespace Project.Infrastructure.Repositories
 {
@@ -37,7 +37,7 @@ namespace Project.Infrastructure.Repositories
             int? Transaction_ID = entity.Transaction_ID;
             int? apistatus = 1;
             double? AgentRateapi = 0;
-            string Message = "";
+            string Message = ""; string Message1 = "";
             string apibankname = "", apiurl = "", apiuser = "", apipass = "", accesscode = "", apicompany_id = "", api_fields = "";
             string? SecurityKey = _appSettings.SecurityKey;
             string whereclause = " and a.ID=" + api_id;
@@ -80,9 +80,187 @@ namespace Project.Infrastructure.Repositories
             if (api_id > 0)
             {
 
-                if (api_id == 15)
+                if (api_id == 3)
+                {
+
+                    apistatus = 0;
+                    string company_id = "";
+                    string Clientid = "";
+                    string Agentcode = "";
+                    string FrSubagent = "";
+                    string Headers = "";
+                    try
+                    {
+                        if (api_id == 3 && api_fields != "" && api_fields != null)
+                        {
+                            Newtonsoft.Json.Linq.JObject obj = Newtonsoft.Json.Linq.JObject.Parse(api_fields);
+                            company_id = Convert.ToString(obj["company_id"]);
+                            Clientid = Convert.ToString(obj["Clientid"]);
+                            Agentcode = Convert.ToString(obj["Agentcode"]);
+                            FrSubagent = Convert.ToString(obj["FrSubagent"]);
+                            Headers = Convert.ToString(obj["Headers"]);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Message1 = ex.Message;
+                        await SaveErrorLogAsync(ex.ToString(), DateTime.Now, "BranchList", entity.user_id, entity.Branch_ID, Client_ID, 0);
+                    }
+
+                    string country_code = "";
+                    string coutry_name = "";
+                    string username = apiuser;
+                    string password = apipass;
+                    company_id = company_id;
+                    string Customer_ID = result.Customer_ID.ToString();
+
+                    var options = new RestClientOptions(apiurl + "/api/Token")
+                    {
+                        MaxTimeout = -1
+                    };
+                    var client = new RestClient(options);
+                    var request = new RestRequest()
+                    {
+                        Method = Method.Post
+                    };
+                    string credentials = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{username}:{password}"));
+                    request.AddHeader("Authorization", $"Basic {credentials}");
+                    string req = apiurl + "/api/Token" + credentials;
+                    await SaveActivityLogTracker("Datafield Create Token Request From MTS_Integration: <br/>" + req + "", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "Proceed", entity.Branch_ID, Client_ID);
+
+                    var response = client.Execute(request);
+                    await SaveActivityLogTracker("Datafield Create Token Response From MTS_Integration: <br/>" + response.Content + "", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "Proceed", entity.Branch_ID, Client_ID);
+
+                    if (response.StatusCode == System.Net.HttpStatusCode.OK)
+                    {
+                        dynamic json = JsonConvert.DeserializeObject(response.Content);
+                        string token = json.Token;
+
+
+                        options = new RestClientOptions(apiurl + "/api/CountryList")
+                        {
+                            MaxTimeout = -1
+                        };
+                        client = new RestClient(options);
+                        request = new RestRequest()
+                        {
+                            Method = Method.Post
+                        };
+
+                        request.AddHeader(Headers, token);
+                        request.AddHeader("Content-Type", "application/json");
+                        request.AddHeader("Authorization", $"Basic {credentials}");
+
+                        var body = new
+                        {
+                            UserId = username,
+                            CompanyID = company_id
+                        };
+
+                        string bodyJson = JsonConvert.SerializeObject(body);
+
+                        string encryptedData = Encrypt(bodyJson);
+
+
+                        var requestBody = new
+                        {
+                            jsonstring = encryptedData
+                        };
+                        request.AddParameter("application/json", JsonConvert.SerializeObject(requestBody), ParameterType.RequestBody);
+                        req = apiurl + "/api/CountryList" + body + "jsonstring:" + requestBody;
+                        await SaveActivityLogTracker("Datafield CountryList Request From MTS_Integration: <br/>" + req + "", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(entity.user_id), "BranchList", entity.Branch_ID, Client_ID);
+
+                        response = client.Execute(request);
+                        json = JsonConvert.DeserializeObject(response.Content);
+                        await SaveActivityLogTracker("Datafield CountryList Response From MTS_Integration: <br/>" + response.Content + "", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(entity.user_id), "BranchList", entity.Branch_ID, Client_ID);
+
+                        string targetCountryCode = entity.Country_Code;
+
+
+                        foreach (var country5 in json.CountryList)
+                        {
+                            if (country5.CountryCode == targetCountryCode)
+                            {
+                                coutry_name = country5.Country;
+                                country_code = country5.CountryCode;
+                            }
+                        }
+
+
+
+
+
+                        options = new RestClientOptions(apiurl + "/api/BranchList")
+                        {
+                            MaxTimeout = -1
+                        };
+                        client = new RestClient(options);
+                        request = new RestRequest()
+                        {
+                            Method = Method.Post
+                        };
+
+                        request.AddHeader(Headers, token);
+                        request.AddHeader("Content-Type", "application/json");
+                        request.AddHeader("Authorization", $"Basic {credentials}");
+
+                        var body4 = new
+                        {
+                            UserId = username,
+                            CompanyID = company_id,
+                            CountryCode = country_code,
+                            type = "Cash"
+                        };
+
+                        bodyJson = JsonConvert.SerializeObject(body4);
+
+                        encryptedData = Encrypt(bodyJson);
+
+
+                        requestBody = new
+                        {
+                            jsonstring = encryptedData
+                        };
+                        request.AddParameter("application/json", JsonConvert.SerializeObject(requestBody), ParameterType.RequestBody);
+                        req = apiurl + "/api/BranchList" + body4 + "jsonstring: " + requestBody;
+                        await SaveActivityLogTracker("Datafield BranchList Request From MTS_Integration: <br/>" + req + "", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(entity.user_id), "BranchList", entity.Branch_ID, Client_ID);
+
+                        response = client.Execute(request);
+                        json = JsonConvert.DeserializeObject(response.Content);
+                        await SaveActivityLogTracker("Datafield BranchList Response From MTS_Integration: <br/>" + response.Content + "", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(entity.user_id), "BranchList", entity.Branch_ID, Client_ID);
+
+                        var obj1 = Newtonsoft.Json.Linq.JObject.Parse(response.Content);
+                        var arr = obj1["Branch_List"];
+
+                        foreach (var branch in arr)
+                        {
+
+                            string branch_code = Convert.ToString(branch["Branchcode"]);
+                            string city = Convert.ToString(branch["City"]);
+                            string Address = Convert.ToString(branch["Address"]);
+                            branchDetails.Add(new BranchDetailViewModel
+                            {
+                                BranchCode = branch_code,
+                                City = city,
+                                Country = entity.Country_Name,
+                                Address = Address,
+                                ApiId = api_id.Value
+                            });
+
+
+                        }
+
+
+
+
+                    }
+                }
+
+
+                else if (api_id == 15)
                 {
                     #region amal_get_collectionpoints
+                    apistatus = 0;
                     Newtonsoft.Json.Linq.JObject jsongetServices = new Newtonsoft.Json.Linq.JObject();
                     Newtonsoft.Json.Linq.JObject jsongetServiceOperators = new Newtonsoft.Json.Linq.JObject();
                     Newtonsoft.Json.Linq.JObject jsonGetCitiesByCountryId = new Newtonsoft.Json.Linq.JObject();
@@ -111,6 +289,7 @@ namespace Project.Infrastructure.Repositories
                             }
                             catch (Exception ex)
                             {
+                                Message1 = ex.Message;
                                 await SaveErrorLogAsync("Get Amal city Collection Points Bank Error: <br/> " + ex.ToString(), DateTime.Now, "BranchList", entity.user_id, entity.Branch_ID, Client_ID, 0);
 
                             }
@@ -148,6 +327,7 @@ namespace Project.Infrastructure.Repositories
                             }
                             catch (Exception ex)
                             {
+                                Message1 = ex.Message;
                                 await SaveErrorLogAsync(ex.ToString(), DateTime.Now, "BranchList", entity.user_id, entity.Branch_ID, Client_ID, 0);
                             }
 
@@ -161,6 +341,7 @@ namespace Project.Infrastructure.Repositories
                             }
                             catch (Exception ex)
                             {
+                                Message1 = ex.Message;
                                 await SaveErrorLogAsync(ex.ToString(), DateTime.Now, "BranchList", entity.user_id, entity.Branch_ID, Client_ID, 0);
                             }
 
@@ -212,6 +393,7 @@ namespace Project.Infrastructure.Repositories
                                 }
                                 catch (Exception ex)
                                 {
+                                    Message1 = ex.Message;
                                     await SaveErrorLogAsync(ex.ToString(), DateTime.Now, "BranchList", entity.user_id, entity.Branch_ID, Client_ID, 0);
                                 }
                             }
@@ -254,6 +436,7 @@ namespace Project.Infrastructure.Repositories
                             }
                             catch (Exception ex)
                             {
+                                Message1 = ex.Message;
                                 await SaveErrorLogAsync("Amal Token Generation Exception From MTS_Integration: <br/> " + ex.ToString(), DateTime.Now, "BranchList", entity.user_id, entity.Branch_ID, Client_ID, 0);
                             }
 
@@ -310,6 +493,7 @@ namespace Project.Infrastructure.Repositories
                             }
                             catch (Exception ex)
                             {
+                                Message1 = ex.Message;
                                 await SaveErrorLogAsync("Get Amal city Collection Points exception: <br/> " + ex.ToString(), DateTime.Now, "Proceed", entity.user_id, entity.Branch_ID, Client_ID, 0);
                             }
 
@@ -423,6 +607,7 @@ namespace Project.Infrastructure.Repositories
                     }
                     catch (Exception ex)
                     {
+                        Message1 = ex.Message;
                         await SaveErrorLogAsync("Get Amal city Collection Points Error exception: <br/> " + ex.ToString(), DateTime.Now, "BranchList", entity.user_id, entity.Branch_ID, Client_ID, 0);
                     }
                     #endregion
@@ -433,6 +618,7 @@ namespace Project.Infrastructure.Repositories
                 else if (api_id == 45)
                 {
                     #region Dynathopia
+                    apistatus = 0;
                     branchDetails.Add(new BranchDetailViewModel
                     {
                         BranchCode = "Dynathopia",
@@ -446,6 +632,7 @@ namespace Project.Infrastructure.Repositories
                 else if (api_id == 47)
                 {
                     #region Budpay
+                    apistatus = 0;
                     branchDetails.Add(new BranchDetailViewModel
                     {
                         BranchCode = "Budpay",
@@ -456,19 +643,94 @@ namespace Project.Infrastructure.Repositories
                     });
                     #endregion Budpay
                 }
-            }
+                else if (api_id == 48)
+                {
+                    #region HelloPaisa
+                    if (result.PaymentDepositType_ID == 2)
+                    {
+         
+                        try
+                        {
+                            string clause = "apacc.Collection_Type = " + Convert.ToInt32(result.PaymentDepositType_ID) +
+                                           " AND apacc.Country_ID = " + Convert.ToInt32(entity.Country_ID);
+                            var storedProcedureName125 = "Get_Provider_Details_By_Id";
+                            var values125 = new
+                            {
+                                in_Client_ID = Convert.ToInt32(Client_ID),
+                                WhereClause = clause,
+                            };
 
-            return new BranchListResponseViewModel
+                            var Get_Provider_Details_By_Id = await _dbConnection.QueryAsync(storedProcedureName125, values125, commandType: CommandType.StoredProcedure);
+                            dynamic dtp = Get_Provider_Details_By_Id.FirstOrDefault();
+
+                            if (dtp!= "")
+                            {
+                               
+                                foreach (DataRow row in dtp.Rows)
+                                {
+                                    string Provider_name = Convert.ToString(row["Provider_name"]);
+                                    string BankRoute = Convert.ToString(row["ProviderPayerID"]);
+
+                                    branchDetails.Add(new BranchDetailViewModel
+                                    {
+                                        BranchCode = Provider_name,
+                                        City = BankRoute,
+                                        Country = entity.Country_Name,
+                                        Address = BankRoute,
+                                        ApiId = api_id.Value
+                                    });
+
+                                }
+
+                            }
+                        }
+                        catch (Exception ex) { }
+                    }
+                    else
+                    {
+                        apistatus = 0;
+                        branchDetails.Add(new BranchDetailViewModel
+                        {
+                            BranchCode = "Hello Paisa",
+                            City = "",
+                            Country = entity.Country_Name,
+                            Address = "",
+                            ApiId = api_id.Value
+                        });
+                    }
+                    #endregion HelloPaisa
+                }
+
+            }
+            if (apistatus == 0)
             {
-                Status = "Success",
-                StatusCode = 0,
-                Message = Message,
-                ApiId = Transaction_ID,
-                AgentRate = AgentRateapi,
-                ApiStatus = apistatus,
-                ExtraFields = new List<string> { "", "" },
-                BranchDetails = branchDetails // Add this line
-            };
+                return new BranchListResponseViewModel
+                {
+                    Status = "Success",
+                    StatusCode = 0,
+                    Message = Message,
+                    ApiId = Transaction_ID,
+                    AgentRate = AgentRateapi,
+                    ApiStatus = apistatus,
+                    ExtraFields = new List<string> { "", "" },
+                    BranchDetails = branchDetails // Add this line
+                };
+            }
+            else
+            {
+                Message = "Description :" + Message1;
+                return new BranchListResponseViewModel
+                {
+                    Status = "Failed",
+                    StatusCode = 2,
+                    Message = Message,
+                    ApiId = Transaction_ID,
+                    AgentRate = AgentRateapi,
+                    ApiStatus = apistatus,
+                    ExtraFields = new List<string> { "", "" },
+                    BranchDetails = branchDetails // Add this line
+                };
+            }
         }
     }
 }

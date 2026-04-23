@@ -22,6 +22,8 @@ namespace Project.API.Extensions
             services.AddScoped<ITransactionStatusService, TransactionStatusService>(); 
             services.AddScoped<ICancelTransactionService, CancelTransactionService>(); 
             services.AddScoped<IBranchListService, BranchListService>();
+            services.AddScoped<IPayWithBankService, PayWithBankService>();
+            services.AddScoped<IPaymentStatusService, PaymentStatusService>();
             #endregion
 
             #region Repositories
@@ -31,6 +33,8 @@ namespace Project.API.Extensions
             services.AddTransient<ITransactionStatusRepository, TransactionStatusRepository>();          
             services.AddTransient<ICancelTransactionRepository, CancelTransactionRepository>();
             services.AddTransient<IBranchListRepository, BranchListRepository>();
+            services.AddTransient<IPayWithBankRepository, PayWithBankRepository>();
+            services.AddTransient<IPaymentStatusRepository, PaymentStatusRepository>();
             #endregion
 
             #region Mapper
@@ -48,10 +52,19 @@ namespace Project.API.Extensions
 
                 cfg.CreateMap<TransactionStatus, TransactionStatusViewModel>();
                 cfg.CreateMap<TransactionStatusViewModel, TransactionStatus>();
+
                 cfg.CreateMap<CancelTransaction, CancelTransactionViewModel>();
                 cfg.CreateMap<CancelTransactionViewModel, CancelTransaction>();
+
                 cfg.CreateMap<BranchList, BranchListViewModel>();
                 cfg.CreateMap<BranchListViewModel, BranchList>();
+
+                cfg.CreateMap<PayWithBank, PayWithBankViewModel>();
+                cfg.CreateMap<PayWithBankViewModel, PayWithBank>();
+
+                cfg.CreateMap<PaymentStatus, PaymentStatusViewModel>();
+                cfg.CreateMap<PaymentStatusViewModel, PaymentStatus>();
+
             });
 
             IMapper mapper = configuration.CreateMapper();
@@ -71,6 +84,12 @@ namespace Project.API.Extensions
             services.AddSingleton<IBaseMapper<TransactionStatusViewModel, TransactionStatus>>(new BaseMapper<TransactionStatusViewModel, TransactionStatus>(mapper));
             services.AddSingleton<IBaseMapper<CancelTransactionViewModel, CancelTransaction>>(new BaseMapper<CancelTransactionViewModel, CancelTransaction>(mapper));
             services.AddSingleton<IBaseMapper<BranchListViewModel, BranchList>>(new BaseMapper<BranchListViewModel, BranchList>(mapper));
+
+            services.AddSingleton<IBaseMapper<PayWithBank, PayWithBankViewModel>>(new BaseMapper<PayWithBank, PayWithBankViewModel>(mapper));
+            services.AddSingleton<IBaseMapper<PayWithBankViewModel, PayWithBank>>(new BaseMapper<PayWithBankViewModel, PayWithBank>(mapper));
+
+            services.AddSingleton<IBaseMapper<PaymentStatus, PaymentStatusViewModel>>(new BaseMapper<PaymentStatus, PaymentStatusViewModel>(mapper));
+            services.AddSingleton<IBaseMapper<PaymentStatusViewModel, PaymentStatus>>(new BaseMapper<PaymentStatusViewModel, PaymentStatus>(mapper));
             #endregion
 
             return services;

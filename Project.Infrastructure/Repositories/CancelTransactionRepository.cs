@@ -6,12 +6,8 @@ using Project.Core.Interfaces.IRepositories;
 using RestSharp;
 using System.Data;
 using Project.API.Configuration;
-using MySql.Data.MySqlClient;
-using System.Data.Common;
-
 using Project.Core.Entities.Business;
 using System.Net;
-using Org.BouncyCastle.Ocsp;
 using System.Text;
 
 namespace Project.Infrastructure.Repositories
@@ -39,7 +35,7 @@ namespace Project.Infrastructure.Repositories
             int? Transaction_ID = entity.Transaction_ID;
             int? apistatus = 1;
             double? AgentRateapi = 0;
-            string Message = "";
+            string Message = ""; string Message1 = "";
             string apibankname = "", apiurl = "", apiuser = "", apipass = "", accesscode = "", apicompany_id = "", api_fields = "";
             string? SecurityKey = _appSettings.SecurityKey;
             string whereclause = " and a.ID=" + api_id;
@@ -134,6 +130,7 @@ namespace Project.Infrastructure.Repositories
                         }
                         catch (Exception ex)
                         {
+                            Message1 = ex.Message;
                             await SaveErrorLogAsync("Amal Token Generation Exception From MTS_Integration: <br/> " + ex.ToString(), DateTime.Now, "TransactionStatus", entity.user_id, entity.Branch_ID, Client_ID, 0);
                         }
 
@@ -244,13 +241,14 @@ namespace Project.Infrastructure.Repositories
                             }
                             catch (Exception ex)
                             {
+                                Message1 = ex.Message;
                                 await SaveErrorLogAsync("Amal Token Generation Exception From MTS_Integration: <br/> " + ex.ToString(), DateTime.Now, "TransactionStatus", entity.user_id, entity.Branch_ID, Client_ID, 0);
 
                             }
 
 
                         }
-                        else  if (json["response"]["result"]["Transaction"]["TransactionDetails"]["TransactionStatus"].ToString() == "Cancel")
+                        else if (json["response"]["result"]["Transaction"]["TransactionDetails"]["TransactionStatus"].ToString() == "Cancel")
                         {
                             Message = "Transaction has allready cancelled.";
                             return new CancelTransactionResponseViewModel
@@ -286,6 +284,7 @@ namespace Project.Infrastructure.Repositories
                 }
                 catch (Exception ex)
                 {
+                    Message1 = ex.Message;
                     await SaveErrorLogAsync("Amal Token Generation Exception From MTS_Integration: <br/> " + ex.ToString(), DateTime.Now, "TransactionStatus", entity.user_id, entity.Branch_ID, Client_ID, 0);
 
                 }
@@ -314,7 +313,7 @@ namespace Project.Infrastructure.Repositories
                 {
                     Status = "Failed",
                     StatusCode = 2,
-                    Message = "Something Went Wrong",
+                    Message = "Description:" + Message1,
                     ApiId = Transaction_ID,
                     AgentRate = AgentRateapi,
                     ApiStatus = apistatus,

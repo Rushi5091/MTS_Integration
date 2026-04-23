@@ -14,5 +14,6 @@ namespace Project.Core.Interfaces.IServices
         Task<ProceedResponseViewModel> ProceedWithWallet(ProceedWithWalletViewModel model);
         
         Task<CreateNGNWalletResponseViewModel> CreateNGNWallet(CreateNGNWalletViewModel model);
+        Task<string> LogMessage(string message);
     }
 }

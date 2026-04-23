@@ -53,5 +53,12 @@ namespace Project.Core.Services
             return await _CreateNGNWalletRepository.CreateNGNWallet(entity);
         }
 
+        public async Task<string> LogMessage(string message)
+        {
+            string logFilePath = @"C:\Logs\activity.txt";
+            string logEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}{Environment.NewLine}";
+            File.AppendAllText(logFilePath, logEntry);
+            return "ok";
+        }
     }
 }
