@@ -5143,6 +5143,849 @@ namespace Project.Infrastructure.Repositories
                 #endregion Nepal Remit
 
             }
+            else if (api_id == 46)
+            {
+                #region Nepal Remit
+                string jsonResponse = "";
+                JObject responseObject = null;
+                int AmountInGBPAsInt = 0;
+
+                // Get API configuration from api_fields
+                string appId = "";
+                string apiKey = "";
+                string remitCurrency = "";
+                if (api_fields != "" && api_fields != null)
+                {
+                    Newtonsoft.Json.Linq.JObject obj = Newtonsoft.Json.Linq.JObject.Parse(api_fields);
+                    appId = Convert.ToString(obj["appId"]);
+                    apiKey = Convert.ToString(obj["apiKey"]);
+                    remitCurrency = Convert.ToString(obj["remitCurrency"]);
+                }
+
+                await SaveActivityLogTracker("API NepalRemit start", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(result.Customer_ID), "API request id", entity.Branch_ID, Client_ID);
+
+                try
+                {
+                    string Customer_ID = result.Customer_ID.ToString();
+                    string locationId = "";
+                    string Beneficiary_Name = "";
+                    try
+                    {
+                        Beneficiary_Name = result.Beneficiary_Name.ToString();
+                    }
+                    catch (Exception ex) { }
+
+                    string Account_Number = "";
+                    string AmountInGBP = result.AmountInPKR.ToString();
+                    AmountInGBPAsInt = Convert.ToInt32(Convert.ToDecimal(AmountInGBP));
+                    string refer = result.ReferenceNo.ToString();
+
+                    string senderFirstName = result.First_Name.ToString();
+                    string senderMiddleName = result.Middle_Name.ToString();
+                    string senderLastName = result.Last_Name.ToString();
+                    string senderAddress = result.Country_Name.ToString();
+                    string senderCity = result.City_Name.ToString();
+
+                    string senderCountry = result.ISO_Code_Three.ToString();
+                    string senderMobile = result.Mobile_Number.ToString();
+                    string senderIdNumber = result.SenderID_Number.ToString();
+                    string senderDateOfBirth = result.Sender_DOBmdy.ToString();
+                    string senderIdExpireDate = result.SenderID_ExpiryDatemdy.ToString();
+                    string senderIdIssueDate = result.Issue_Datemdy.ToString();
+                    string senderIdIssueCountry = result.NISO_Code_Three.ToString();
+                    string senderZipCode = result.Post_Code.ToString();
+
+                    string receiverAddress = result.Beneficiary_Address.ToString();
+                    string receiverContactNumber = result.Beneficiary_Mobile.ToString();
+                    string receiverCity = result.Beneficiary_City.ToString();
+                    string receiverCountry = result.BISO_Code_Three.ToString();
+                    string payoutCurrency = result.Currency_Code.ToString();
+                    string transferAmount = result.AmountInGBP.ToString();
+                    int PaymentDepositType_ID = Convert.ToInt32(result.PaymentDepositType_ID);
+                    string AccountHolderName = "";
+
+                    try
+                    {
+                        if (result.AccountHolderName != null && result.AccountHolderName.ToString() != "")
+                            AccountHolderName = result.AccountHolderName.ToString();
+                        else if (result.Beneficiary_Name != null)
+                            AccountHolderName = result.Beneficiary_Name.ToString();
+                        else
+                            AccountHolderName = "";
+                    }
+                    catch (Exception ex) { }
+
+                    string[] nameParts = AccountHolderName.Split(' ');
+                    string receiverFirstName = nameParts[0]; // First name before space
+                    string receiverLastName = nameParts.Length > 1 ? nameParts[1] : "";
+
+                    // Handle beneficiary name properly
+                    string bname = result.Beneficiary_Name.ToString();
+                    string bfname = bname;
+                    string blname = ".";
+                    if (bname.Contains(" "))
+                    {
+                        string[] spli = bname.Split(' ');
+                        if (spli.Length > 1)
+                        {
+                            bfname = bname.Substring(0, (bname.Length - spli[spli.Length - 1].Length));
+                            blname = spli[spli.Length - 1];
+                        }
+                    }
+                    receiverFirstName = bfname;
+                    receiverLastName = blname;
+
+                    string senderGender = result.sendergender.ToString().ToLower();
+
+                    string dateTime = "\"" + DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss.fff") + "\"";
+                    string agentSessionId = ComputeSha256Hash(dateTime);
+                    string senderNationality = "";
+                    try
+                    {
+                        string WhereClause = "Country_Name = '" + result.Nationality.ToString() + "'";
+
+                        var dttcmdSenderNationality = await _dbConnection.QueryAsync("Sp_GetCountryMaster",
+                            new { WhereClause },
+                            commandType: CommandType.StoredProcedure);
+
+                        if (dttcmdSenderNationality.Any())
+                        {
+                            senderNationality = result.ISO_Code_Three.ToString();
+                        }
+                    }
+                    catch (Exception ex) { }
+
+                    // Get Purpose, Profession, Relation, Document mappings
+                    string Purpose = result.Purpose?.ToString() ?? "";
+                    string dataValue = "";
+                    string Profession = result.Profession?.ToString() ?? "";
+                    string ProfessionData = "";
+                    string relation = result.Relation?.ToString() ?? "";
+                    string senderBeneficiaryRelationship = "";
+                    string Document = result.ID_Name?.ToString() ?? "";
+                    string senderIdTypedata = "";
+
+                    try
+                    {
+                        #region Purpose
+                        if (Purpose.Equals("Family Support", StringComparison.OrdinalIgnoreCase) ||
+                            Purpose.Equals("Saving", StringComparison.OrdinalIgnoreCase) ||
+                            Purpose.Equals("self", StringComparison.OrdinalIgnoreCase) ||
+                            Purpose.Equals("own", StringComparison.OrdinalIgnoreCase) ||
+                            Purpose.Equals("Own Overseas Account", StringComparison.OrdinalIgnoreCase))
+                        {
+                            dataValue = "6"; // Family maintenance / saving
+                        }
+                        else if (Purpose.Equals("Occasional Gift", StringComparison.OrdinalIgnoreCase) ||
+                                 Purpose.Equals("Gift", StringComparison.OrdinalIgnoreCase))
+                        {
+                            dataValue = "8"; // Gift
+                        }
+                        else if (Purpose.Equals("Holiday", StringComparison.OrdinalIgnoreCase) ||
+                                 Purpose.Equals("Holidays", StringComparison.OrdinalIgnoreCase))
+                        {
+                            dataValue = "20"; // Personal travel and tour
+                        }
+                        else if (Purpose.Equals("Emergency", StringComparison.OrdinalIgnoreCase) ||
+                                 Purpose.Equals("Medical", StringComparison.OrdinalIgnoreCase) ||
+                                 Purpose.Equals("Medical T", StringComparison.OrdinalIgnoreCase) ||
+                                 Purpose.Equals("Health Care", StringComparison.OrdinalIgnoreCase))
+                        {
+                            dataValue = "16"; // Medical expenses
+                        }
+                        else if (Purpose.Equals("Business", StringComparison.OrdinalIgnoreCase))
+                        {
+                            dataValue = "2"; // Business profits
+                        }
+                        else if (Purpose.Equals("Wedding", StringComparison.OrdinalIgnoreCase))
+                        {
+                            dataValue = "17"; // Other Personal Services
+                        }
+                        else if (Purpose.Equals("Education Loan Repayment", StringComparison.OrdinalIgnoreCase))
+                        {
+                            dataValue = "5"; // Educational expenses
+                        }
+                        else if (Purpose.Equals("Other loan repayment", StringComparison.OrdinalIgnoreCase))
+                        {
+                            dataValue = "22"; // Repayment of loan
+                        }
+                        else if (Purpose.Equals("Investment", StringComparison.OrdinalIgnoreCase) ||
+                                 Purpose.Equals("Finance", StringComparison.OrdinalIgnoreCase))
+                        {
+                            dataValue = "12"; // Investment in real estate
+                        }
+                        else if (Purpose.Equals("Other Purposes", StringComparison.OrdinalIgnoreCase) ||
+                                 Purpose.Equals("new purpose", StringComparison.OrdinalIgnoreCase) ||
+                                 Purpose.Equals("Testing", StringComparison.OrdinalIgnoreCase) ||
+                                 Purpose.Equals("Test", StringComparison.OrdinalIgnoreCase))
+                        {
+                            dataValue = "18"; // others
+                        }
+                        else
+                        {
+                            dataValue = "18"; // Default to "others"
+                        }
+                        #endregion Purpose
+
+                        #region Profession
+                        if (Profession.Equals("Accountant", StringComparison.OrdinalIgnoreCase) ||
+                            Profession.Equals("Actor", StringComparison.OrdinalIgnoreCase) ||
+                            Profession.Equals("Actuary", StringComparison.OrdinalIgnoreCase) ||
+                            Profession.Equals("Administrative Assistant", StringComparison.OrdinalIgnoreCase) ||
+                            Profession.Equals("Manager and Administrator", StringComparison.OrdinalIgnoreCase) ||
+                            Profession.Equals("HR", StringComparison.OrdinalIgnoreCase) ||
+                            Profession.Equals("Tester", StringComparison.OrdinalIgnoreCase) ||
+                            Profession.Equals("Test Engineer", StringComparison.OrdinalIgnoreCase) ||
+                            Profession.Equals("Cricketer", StringComparison.OrdinalIgnoreCase) ||
+                            Profession.Equals("Rabbi", StringComparison.OrdinalIgnoreCase))
+                        {
+                            ProfessionData = "18"; // Salary/Saving
+                        }
+                        else if (Profession.Equals("Gamer", StringComparison.OrdinalIgnoreCase) ||
+                                 Profession.Equals("Freelancer", StringComparison.OrdinalIgnoreCase))
+                        {
+                            ProfessionData = "8"; // Freelance income
+                        }
+                        else if (Profession.Equals("Other", StringComparison.OrdinalIgnoreCase) ||
+                                 Profession.Equals("hiii", StringComparison.OrdinalIgnoreCase))
+                        {
+                            ProfessionData = "23"; // Data is not required to be collected by local jurisdiction
+                        }
+                        else
+                        {
+                            ProfessionData = "23"; // Default fallback
+                        }
+                        #endregion Profession
+
+                        #region Relation
+                        if (relation.Equals("Father", StringComparison.OrdinalIgnoreCase) ||
+                            relation.Equals("Mother", StringComparison.OrdinalIgnoreCase) ||
+                            relation.Equals("Step Mother", StringComparison.OrdinalIgnoreCase) ||
+                            relation.Equals("Step Father", StringComparison.OrdinalIgnoreCase))
+                        {
+                            senderBeneficiaryRelationship = "2"; // Parents
+                        }
+                        else if (relation.Equals("Sister", StringComparison.OrdinalIgnoreCase) ||
+                                 relation.Equals("Brother", StringComparison.OrdinalIgnoreCase) ||
+                                 relation.Equals("Step Brother", StringComparison.OrdinalIgnoreCase) ||
+                                 relation.Equals("Step Sister", StringComparison.OrdinalIgnoreCase) ||
+                                 relation.Equals("Sibling", StringComparison.OrdinalIgnoreCase))
+                        {
+                            senderBeneficiaryRelationship = "23"; // Sibling/brother/sister
+                        }
+                        else if (relation.Equals("Cousin", StringComparison.OrdinalIgnoreCase) ||
+                                 relation.Equals("Uncle", StringComparison.OrdinalIgnoreCase) ||
+                                 relation.Equals("Aunt", StringComparison.OrdinalIgnoreCase) ||
+                                 relation.Equals("In Laws", StringComparison.OrdinalIgnoreCase) ||
+                                 relation.Equals("Mother in law", StringComparison.OrdinalIgnoreCase) ||
+                                 relation.Equals("Father In law", StringComparison.OrdinalIgnoreCase) ||
+                                 relation.Equals("Niece", StringComparison.OrdinalIgnoreCase) ||
+                                 relation.Equals("Nephew", StringComparison.OrdinalIgnoreCase) ||
+                                 relation.Equals("Sister in law", StringComparison.OrdinalIgnoreCase) ||
+                                 relation.Equals("Brother in law", StringComparison.OrdinalIgnoreCase) ||
+                                 relation.Equals("Sibling's child", StringComparison.OrdinalIgnoreCase))
+                        {
+                            senderBeneficiaryRelationship = "21"; // Relative/uncle/auntie/cousin
+                        }
+                        else if (relation.Equals("Friend", StringComparison.OrdinalIgnoreCase) ||
+                                 relation.Equals("Self Friend", StringComparison.OrdinalIgnoreCase))
+                        {
+                            senderBeneficiaryRelationship = "15"; // Friend
+                        }
+                        else if (relation.Equals("Grand Son", StringComparison.OrdinalIgnoreCase) ||
+                                 relation.Equals("Grand Daughter", StringComparison.OrdinalIgnoreCase) ||
+                                 relation.Equals("Great Grandson", StringComparison.OrdinalIgnoreCase) ||
+                                 relation.Equals("Grand Mother", StringComparison.OrdinalIgnoreCase) ||
+                                 relation.Equals("Grand Father", StringComparison.OrdinalIgnoreCase))
+                        {
+                            senderBeneficiaryRelationship = "17"; // Grand Parents
+                        }
+                        else if (relation.Equals("Son", StringComparison.OrdinalIgnoreCase) ||
+                                 relation.Equals("Daughter", StringComparison.OrdinalIgnoreCase))
+                        {
+                            senderBeneficiaryRelationship = "4"; // Children
+                        }
+                        else if (relation.Equals("Wife", StringComparison.OrdinalIgnoreCase) ||
+                                 relation.Equals("Husband", StringComparison.OrdinalIgnoreCase) ||
+                                 relation.Equals("Spouse", StringComparison.OrdinalIgnoreCase))
+                        {
+                            senderBeneficiaryRelationship = "24"; // Spouse
+                        }
+                        else if (relation.Equals("Ex Wife", StringComparison.OrdinalIgnoreCase) ||
+                                 relation.Equals("Ex husband", StringComparison.OrdinalIgnoreCase))
+                        {
+                            senderBeneficiaryRelationship = "11"; // Ex-spouse
+                        }
+                        else if (relation.Equals("Self", StringComparison.OrdinalIgnoreCase))
+                        {
+                            senderBeneficiaryRelationship = "22"; // Self
+                        }
+                        else if (relation.Equals("Other", StringComparison.OrdinalIgnoreCase))
+                        {
+                            senderBeneficiaryRelationship = "19"; // Others
+                        }
+                        else
+                        {
+                            senderBeneficiaryRelationship = "19"; // if not mapped
+                        }
+                        #endregion Relation
+
+                        #region Get Id Name
+                        if (Document.Equals("Passport", StringComparison.OrdinalIgnoreCase) ||
+                            Document.Equals("passport", StringComparison.OrdinalIgnoreCase))
+                        {
+                            senderIdTypedata = "03"; // Passport
+                        }
+                        else if (Document.Equals("Driving License", StringComparison.OrdinalIgnoreCase) ||
+                                 Document.Equals("UK Driving License", StringComparison.OrdinalIgnoreCase))
+                        {
+                            senderIdTypedata = "02"; // Driving License
+                        }
+                        else if (Document.Equals("Aadhar Card", StringComparison.OrdinalIgnoreCase) ||
+                                 Document.Equals("Identification ID", StringComparison.OrdinalIgnoreCase) ||
+                                 Document.Equals("identification document", StringComparison.OrdinalIgnoreCase) ||
+                                 Document.Equals("State Id", StringComparison.OrdinalIgnoreCase) ||
+                                 Document.Equals("ID GLOBAL", StringComparison.OrdinalIgnoreCase) ||
+                                 Document.Equals("ID Issued Card", StringComparison.OrdinalIgnoreCase))
+                        {
+                            senderIdTypedata = "04"; // Government ID
+                        }
+                        else if (Document.Equals("Voting Card", StringComparison.OrdinalIgnoreCase) ||
+                                 Document.Equals("Voters Card", StringComparison.OrdinalIgnoreCase))
+                        {
+                            senderIdTypedata = "05"; // Voters Card
+                        }
+                        else if (Document.Equals("Work Permit", StringComparison.OrdinalIgnoreCase))
+                        {
+                            senderIdTypedata = "07"; // Work Permit
+                        }
+                        else if (Document.Equals("National ID CARD", StringComparison.OrdinalIgnoreCase) ||
+                                 Document.Equals("National Identity Card", StringComparison.OrdinalIgnoreCase) ||
+                                 Document.Equals("National Residence Card", StringComparison.OrdinalIgnoreCase))
+                        {
+                            senderIdTypedata = "09"; // National ID
+                        }
+                        else if (Document.Equals("EU Nationality Card", StringComparison.OrdinalIgnoreCase) ||
+                                 Document.Equals("European Resident ID CARD", StringComparison.OrdinalIgnoreCase) ||
+                                 Document.Equals("European Resident card", StringComparison.OrdinalIgnoreCase) ||
+                                 Document.Equals("Foreign Identity Card", StringComparison.OrdinalIgnoreCase))
+                        {
+                            senderIdTypedata = "06"; // Residence Permit
+                        }
+                        else if (Document.Equals("Company Registration No", StringComparison.OrdinalIgnoreCase) ||
+                                 Document.Equals("Registration ID", StringComparison.OrdinalIgnoreCase) ||
+                                 Document.Equals("Certificate of Registration", StringComparison.OrdinalIgnoreCase))
+                        {
+                            senderIdTypedata = "08"; // Registration ID
+                        }
+                        else if (Document.Equals("Social Security", StringComparison.OrdinalIgnoreCase) ||
+                                 Document.Equals("Insurance Number", StringComparison.OrdinalIgnoreCase) ||
+                                 Document.Equals("SSF", StringComparison.OrdinalIgnoreCase))
+                        {
+                            senderIdTypedata = "08"; // SSF
+                        }
+                        else if (Document.Equals("Civil ID", StringComparison.OrdinalIgnoreCase))
+                        {
+                            senderIdTypedata = "23";
+                        }
+                        else if (Document.Equals("DIPLOMATIC ID", StringComparison.OrdinalIgnoreCase))
+                        {
+                            senderIdTypedata = "12";
+                        }
+                        else if (Document.Equals("E Tazkira", StringComparison.OrdinalIgnoreCase))
+                        {
+                            senderIdTypedata = "01"; // Citizenship
+                        }
+                        else if (Document.Equals("Other Document", StringComparison.OrdinalIgnoreCase) ||
+                                 Document.Equals("Other Valid Paper Document", StringComparison.OrdinalIgnoreCase) ||
+                                 Document.Equals("Paper Document", StringComparison.OrdinalIgnoreCase) ||
+                                 Document.Equals("Other", StringComparison.OrdinalIgnoreCase) ||
+                                 Document.Equals("System ID", StringComparison.OrdinalIgnoreCase) ||
+                                 Document.Equals("Salary Slip", StringComparison.OrdinalIgnoreCase) ||
+                                 Document.Equals("Re-mortgage Statement", StringComparison.OrdinalIgnoreCase) ||
+                                 Document.Equals("Loan Document", StringComparison.OrdinalIgnoreCase) ||
+                                 Document.Equals("Savings Account Statement", StringComparison.OrdinalIgnoreCase) ||
+                                 Document.Equals("Test Document", StringComparison.OrdinalIgnoreCase) ||
+                                 Document.Equals("Test doc", StringComparison.OrdinalIgnoreCase) ||
+                                 Document.Equals("testnew", StringComparison.OrdinalIgnoreCase) ||
+                                 Document.Equals("test v", StringComparison.OrdinalIgnoreCase) ||
+                                 Document.Equals("demo", StringComparison.OrdinalIgnoreCase) ||
+                                 Document.Equals("hiii", StringComparison.OrdinalIgnoreCase))
+                        {
+                            senderIdTypedata = "99"; // Other
+                        }
+                        else
+                        {
+                            senderIdTypedata = "99"; // Default fallback: Other
+                        }
+                        #endregion Get Id Name
+                    }
+                    catch (Exception exp)
+                    {
+                        await SaveActivityLogTracker("Error In NepalRemit Proceed Transaction Extra mapping: <br/>" + exp.ToString(), 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "Proceed NepalRemit Transaction", entity.Branch_ID, Client_ID);
+                    }
+                    string paymentMode = "";
+                    // Payment mode and location handling
+                    if (PaymentDepositType_ID == 1)
+                    {
+                        paymentMode = "B";
+                        locationId = result.bank_code.ToString();
+                        Account_Number = result.Account_Number.ToString();
+                    }
+                    if (PaymentDepositType_ID == 2)
+                    {
+                        paymentMode = "C";
+
+                        // Get locationId from payerId_datafull if available
+                        string payerIdDataFull = result.payerId_datafull?.ToString() ?? "";
+                        if (!string.IsNullOrEmpty(payerIdDataFull))
+                        {
+                            string[] parts = payerIdDataFull.Split('|');
+                            if (parts.Length >= 3)
+                            {
+                                locationId = parts[2].Trim(); // Gets "CASHNPKA"
+                            }
+                        }
+                    }
+                    if (PaymentDepositType_ID == 3)
+                    {
+                        paymentMode = "W";
+
+                        try
+                        {
+                            // Remove country code from mobile number (first 3 digits)
+                            if (!string.IsNullOrEmpty(senderMobile) && senderMobile.Length >= 3)
+                            {
+                                Account_Number = senderMobile.Substring(3);
+                            }
+                            else
+                            {
+                                Account_Number = senderMobile;
+                            }
+
+                            // Get Country information for the API call
+                            string Country_Currency = "";
+                            string countrycode = "";
+
+                            // Get country code from result if available
+                            if (result.Country_ID != null && Convert.ToInt32(result.Country_ID) > 0)
+                            {
+                                try
+                                {
+                                    string WhereClause = "Country_ID = " + Convert.ToInt32(result.Country_ID);
+
+                                    var dtc = await _dbConnection.QueryAsync("Sp_GetCountryMaster",
+                                        new { WhereClause },
+                                        commandType: CommandType.StoredProcedure);
+
+                                    var countryData = dtc.FirstOrDefault();
+                                    if (countryData != null)
+                                    {
+                                        countrycode = countryData.ISO_Code_Three?.ToString() ?? "";
+                                        Country_Currency = countryData.Country_Currency?.ToString() ?? "";
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    await SaveActivityLogTracker("Error getting country info: <br/>" + ex.ToString(), 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "NepalRemit Proceed", entity.Branch_ID, Client_ID);
+                                }
+                            }
+
+                            // If countrycode is still empty, try to get from receiver country
+                            if (string.IsNullOrEmpty(countrycode))
+                            {
+                                countrycode = receiverCountry;
+                            }
+
+                            // Call Getagentlist API to get dynamic locationId
+                            string dateTime1 = "\"" + DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss.fff") + "\"";
+                            string agentSessionId1 = ComputeSha256Hash(dateTime1);
+
+                            var body1 = @"{
+" + "\n" +
+            @"    ""agentSessionId"": """ + agentSessionId1 + @""",
+" + "\n" +
+            @"    ""paymentMode"": ""W"",
+" + "\n" +
+            @"    ""payoutCountry"": """ + countrycode + @""",
+" + "\n" +
+            @"    ""payoutCurrency"": """ + Country_Currency + @"""
+" + "\n" +
+            @"}";
+
+                            string Temp_url1 = apiurl + "/Getagentlist";
+
+                            // Generate HMAC Authorization for Getagentlist
+                            try
+                            {
+                                accesscode = GenerateHmacAuthorizationHeader("POST", Temp_url1, appId, apiKey, body1);
+                                await SaveActivityLogTracker("Getagentlist accesscode generated successfully", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "NepalRemit Proceed", entity.Branch_ID, Client_ID);
+                            }
+                            catch (Exception ex)
+                            {
+                                await SaveActivityLogTracker("Error for GenerateHmacAuthorizationHeader Getagentlist: <br/>" + ex.ToString(), 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "NepalRemit Proceed", entity.Branch_ID, Client_ID);
+                            }
+
+                            var optionsGetagentlist = new RestClientOptions(Temp_url1)
+                            {
+                                MaxTimeout = -1
+                            };
+                            var clientGetagentlist = new RestClient(optionsGetagentlist);
+                            var requestGetagentlist = new RestRequest()
+                            {
+                                Method = Method.Post
+                            };
+                            requestGetagentlist.AddHeader("Authorization", accesscode);
+                            requestGetagentlist.AddParameter("application/json", body1, ParameterType.RequestBody);
+
+                            await SaveActivityLogTracker("NepalRemit Getagentlist Request: <br/>" + body1 + "", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "NepalRemit Proceed", entity.Branch_ID, Client_ID);
+
+                            RestResponse response1 = clientGetagentlist.Execute(requestGetagentlist);
+
+                            await SaveActivityLogTracker("NepalRemit Getagentlist Response: <br/>" + response1.Content + "", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "NepalRemit Proceed", entity.Branch_ID, Client_ID);
+
+                            dynamic dJson1 = Newtonsoft.Json.JsonConvert.DeserializeObject(response1.Content);
+                            string code1 = dJson1.code;
+
+                            string Provider_name = result.Provider_name?.ToString() ?? "";
+
+                            try
+                            {
+                                if (code1 == "0")
+                                {
+                                    bool locationFound = false;
+                                    foreach (var loc in dJson1.locationDetail)
+                                    {
+                                        string locName = Convert.ToString(loc.locationName).Trim();
+                                        if (string.Equals(locName, Provider_name, StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            locationId = Convert.ToString(loc.locationId);
+                                            locationFound = true;
+                                            await SaveActivityLogTracker("Location found: " + Provider_name + " -> " + locationId, 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "NepalRemit Proceed", entity.Branch_ID, Client_ID);
+                                            break;
+                                        }
+                                    }
+
+                                    // If location not found by name, try to get first available location
+                                    if (!locationFound && dJson1.locationDetail != null && dJson1.locationDetail.Count > 0)
+                                    {
+                                        locationId = Convert.ToString(dJson1.locationDetail[0].locationId);
+                                        await SaveActivityLogTracker("Using first available location: " + locationId, 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "NepalRemit Proceed", entity.Branch_ID, Client_ID);
+                                    }
+                                }
+                                else
+                                {
+                                    await SaveActivityLogTracker("Getagentlist API returned error code: " + code1 + " - " + dJson1.message, 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "NepalRemit Proceed", entity.Branch_ID, Client_ID);
+
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                await SaveActivityLogTracker("Error processing Getagentlist response: <br/>" + ex.ToString(), 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "NepalRemit Proceed", entity.Branch_ID, Client_ID);
+
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            await SaveActivityLogTracker("Error In NepalRemit Proceed Transaction data: <br/>" + ex.ToString(), 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "Proceed NepalRemit Transaction", entity.Branch_ID, Client_ID);
+                        }
+                    }
+
+                    // Build the request body for SendTransaction
+                    var body = @"{
+" + "\n" +
+            @"    ""agentSessionId"": """ + agentSessionId + @""",
+" + "\n" +
+            @"    ""agentTxnId"": """ + refer + @""",
+" + "\n" +
+            @"    ""locationId"": """ + locationId + @""",
+" + "\n" +
+            @"    ""senderFirstName"": """ + senderFirstName + @""",
+" + "\n" +
+            @"    ""senderMiddleName"": """ + senderMiddleName + @""",
+" + "\n" +
+            @"    ""senderLastName"": """ + senderLastName + @""",
+" + "\n" +
+            @"    ""senderGender"": """ + senderGender + @""",
+" + "\n" +
+            @"    ""senderAddress"": """ + senderAddress + @""",
+" + "\n" +
+            @"    ""senderCity"": """ + senderCity + @""",
+" + "\n" +
+            @"    ""senderState"": """ + senderCity + @""",
+" + "\n" +
+            @"    ""senderZipCode"": """ + senderZipCode + @""",
+" + "\n" +
+            @"    ""senderCountry"": """ + senderCountry + @""",
+" + "\n" +
+            @"    ""senderMobile"": """ + senderMobile + @""",
+" + "\n" +
+            @"    ""senderNationality"": """ + senderNationality + @""",
+" + "\n" +
+            @"    ""senderIdType"": """ + senderIdTypedata + @""",
+" + "\n" +
+            @"    ""senderIdNumber"": """ + senderIdNumber + @""",
+" + "\n" +
+            @"    ""senderIdIssueCountry"": """ + senderIdIssueCountry + @""",
+" + "\n" +
+            @"    ""senderIdIssueDate"": """ + senderIdIssueDate + @""",
+" + "\n" +
+            @"    ""senderIdExpireDate"": """ + senderIdExpireDate + @""",
+" + "\n" +
+            @"    ""senderDateOfBirth"": """ + senderDateOfBirth + @""",
+" + "\n" +
+            @"    ""senderOccupation"": """ + ProfessionData + @""",
+" + "\n" +
+            @"    ""senderSourceOfFund"": """ + ProfessionData + @""",
+" + "\n" +
+            @"    ""senderSecondaryIdType"": null,
+" + "\n" +
+            @"    ""senderSecondaryIdNumber"": null,
+" + "\n" +
+            @"    ""senderEmail"": null,
+" + "\n" +
+            @"    ""senderBeneficiaryRelationship"": """ + senderBeneficiaryRelationship + @""",
+" + "\n" +
+            @"    ""purposeOfRemittance"": """ + dataValue + @""",
+" + "\n" +
+            @"    ""receiverFirstName"": """ + receiverFirstName + @""",
+" + "\n" +
+            @"    ""receiverMiddleName"": """",
+" + "\n" +
+            @"    ""receiverLastName"": """ + receiverLastName + @""",
+" + "\n" +
+            @"    ""receiverAddress"": """ + receiverAddress + @""",
+" + "\n" +
+            @"    ""receiverContactNumber"": """ + receiverContactNumber + @""",
+" + "\n" +
+            @"    ""receiverCity"": """ + receiverCity + @""",
+" + "\n" +
+            @"    ""receiverCountry"": """ + receiverCountry + @""",
+" + "\n" +
+            @"    ""receiverIdType"": """",
+" + "\n" +
+            @"    ""receiverIdNumber"": null,
+" + "\n" +
+            @"    ""calcBy"": ""P"",
+" + "\n" +
+            @"    ""transferAmount"": """ + transferAmount + @""",
+" + "\n" +
+            @"    ""remitCurrency"": """ + remitCurrency + @""",
+" + "\n" +
+            @"    ""payoutCurrency"": """ + payoutCurrency + @""",
+" + "\n" +
+            @"    ""paymentMode"": """ + paymentMode + @""",
+" + "\n" +
+            @"    ""bankName"": """",
+" + "\n" +
+            @"    ""bankBranchName"": null,
+" + "\n" +
+            @"    ""bankBranchCode"": null,
+" + "\n" +
+            @"    ""bankAccountNumber"": """ + Account_Number + @""",
+" + "\n" +
+            @"    ""promotionCode"": null,
+" + "\n" +
+            @"    ""routePartner"": null,
+" + "\n" +
+            @"    ""dynamicFields"": [    
+" + "\n" +
+            @"    ]
+" + "\n" +
+            @"}";
+
+                    string Temp_url = apiurl + "/SendTransaction";
+
+                    // Generate HMAC Authorization for SendTransaction
+                    try
+                    {
+                        accesscode = GenerateHmacAuthorizationHeader("POST", Temp_url, appId, apiKey, body);
+                        await SaveActivityLogTracker("accesscode from GenerateHmacAuthorizationHeader: <br/>" + accesscode + " Temp_url: " + Temp_url + " appId: " + appId + " apiKey: " + apiKey, 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "NepalRemit Proceed", entity.Branch_ID, Client_ID);
+                    }
+                    catch (Exception ex)
+                    {
+                        await SaveActivityLogTracker("Error for GenerateHmacAuthorizationHeader: <br/>" + ex.ToString(), 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "NepalRemit Proceed", entity.Branch_ID, Client_ID);
+                    }
+
+                    var options = new RestClientOptions(Temp_url)
+                    {
+                        MaxTimeout = -1
+                    };
+                    var clientSendTransaction = new RestClient(options);
+                    var requestSendTransaction = new RestRequest()
+                    {
+                        Method = Method.Post
+                    };
+                    requestSendTransaction.AddHeader("Authorization", accesscode);
+                    requestSendTransaction.AddParameter("application/json", body, ParameterType.RequestBody);
+
+                    await SaveActivityLogTracker("NepalRemit Create Transaction Request: <br/>" + body + "", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "Dynathopia Proceed", entity.Branch_ID, Client_ID);
+
+                    RestResponse response = clientSendTransaction.Execute(requestSendTransaction);
+
+                    await SaveActivityLogTracker("NepalRemit Create Transaction Response: <br/>" + response.Content + "", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "Dynathopia Proceed", entity.Branch_ID, Client_ID);
+                    await SaveActivityLogTracker("NepalRemit Create Transaction ErrorMessage: <br/>" + Convert.ToString(response.ErrorMessage), 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "NepalRemit Response", entity.Branch_ID, Client_ID);
+                    await SaveActivityLogTracker("NepalRemit Create Transaction ErrorException: <br/>" + Convert.ToString(response.ErrorException), 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "NepalRemit Response", entity.Branch_ID, Client_ID);
+
+                    dynamic dJson = Newtonsoft.Json.JsonConvert.DeserializeObject(response.Content);
+                    string code = dJson.code;
+
+                    if (dJson.code == "0")
+                    {
+                        agentSessionId = dJson.agentSessionId;
+                        string message = dJson.message;
+                        string confirmationId = dJson.confirmationId;
+                        string pinNumber = dJson.pinNumber;
+                        string agentTxnId = dJson.agentTxnId;
+                        string collectAmount = dJson.collectAmount;
+                        string collectCurrency = dJson.collectCurrency;
+                        string serviceCharge = dJson.serviceCharge;
+                        string gstCharge = string.IsNullOrEmpty((string)dJson.gstCharge) ? "0" : dJson.gstCharge;
+                        transferAmount = dJson.transferAmount;
+                        string exchangeRate = dJson.exchangeRate;
+                        string payoutAmount = dJson.payoutAmount;
+                        payoutCurrency = dJson.payoutCurrency;
+                        string feeDiscount = dJson.feeDiscount;
+                        string additionalPremiumRate = dJson.additionalPremiumRate;
+                        string txnDate = dJson.txnDate;
+                        string settlementRate = dJson.settlementRate;
+                        string sendCommission = dJson.sendCommission;
+                        string settlementAmount = dJson.settlementAmount;
+
+                        // CommitTransaction
+                        if (confirmationId != null && confirmationId != "")
+                        {
+                            await SaveActivityLogTracker("NepalRemit CommitTransaction start confirmationId: <br/>" + confirmationId + "", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "NepalRemit Proceed", entity.Branch_ID, Client_ID);
+
+                            var bodyCommit = @"{
+" + "\n" +
+            @"    ""agentSessionId"": """ + agentSessionId + @""",
+" + "\n" +
+            @"    ""confirmationId"": """ + confirmationId + @"""
+" + "\n" +
+            @"}";
+
+                            string CommitTemp_url = apiurl + "/CommitTransaction";
+
+                            // Generate HMAC for CommitTransaction
+                            try
+                            {
+                                accesscode = GenerateHmacAuthorizationHeader("POST", CommitTemp_url, appId, apiKey, bodyCommit);
+                                await SaveActivityLogTracker("accesscode from GenerateHmacAuthorizationHeader for Commit: <br/>" + accesscode, 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "NepalRemit Proceed", entity.Branch_ID, Client_ID);
+                            }
+                            catch (Exception ex)
+                            {
+                                await SaveActivityLogTracker("Error for GenerateHmacAuthorizationHeader Commit: <br/>" + ex.ToString(), 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "NepalRemit Proceed", entity.Branch_ID, Client_ID);
+                            }
+
+                            var optionsCommitTransaction = new RestClientOptions(CommitTemp_url)
+                            {
+                                MaxTimeout = -1
+                            };
+                            var clientCommitTransaction = new RestClient(optionsCommitTransaction);
+                            var requestCommitTransaction = new RestRequest()
+                            {
+                                Method = Method.Post
+                            };
+                            requestCommitTransaction.AddHeader("Authorization", accesscode);
+                            requestCommitTransaction.AddParameter("application/json", bodyCommit, ParameterType.RequestBody);
+
+                            await SaveActivityLogTracker("NepalRemit CommitTransaction Request: <br/>" + bodyCommit + "", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "NepalRemit Proceed", entity.Branch_ID, Client_ID);
+
+                            RestResponse responseCommit = clientCommitTransaction.Execute(requestCommitTransaction);
+
+                            await SaveActivityLogTracker("NepalRemit CommitTransaction response: <br/>" + responseCommit.Content + "", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "NepalRemit Proceed", entity.Branch_ID, Client_ID);
+
+                            dJson = null;
+                            dJson = Newtonsoft.Json.JsonConvert.DeserializeObject(responseCommit.Content);
+                            string codeCommit = dJson.code;
+
+                            if (codeCommit == "0")
+                            {
+                                string APIBranch_Details = "";
+                                apistatus = 0;
+
+                                refer = Convert.ToString(result.ReferenceNo);
+                                await SaveActivityLogTracker("Checking All values for sp: <br/>" + api_id + " " + refer + " " + refer + " " + APIBranch_Details, 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "NepalRemit update transaction mapping values checking", entity.Branch_ID, Client_ID);
+
+                                int mappingid = Convert.ToInt32(result.TransMap_ID);
+                                if (mappingid > 0)
+                                {
+                                    try
+                                    {
+                                        //AgentRateapi = Convert.ToDecimal(exchangeRate);
+                                    }
+                                    catch (Exception etx) { }
+
+                                    try
+                                    {
+                                        var parameters = new
+                                        {
+                                            _BranchListAPI_ID = api_id,
+                                            _APIBranch_Details = entity.APIBranch_Details,
+                                            _TransactionRef = pinNumber,
+                                            _trn_referenceNo = confirmationId,
+                                            _APITransaction_Alert = 0,
+                                            _Transaction_ID = entity.Transaction_ID,
+                                            _Client_ID = entity.Client_ID,
+                                            _Agent_Rate = exchangeRate,
+                                            _payout_partner_rate = exchangeRate,
+                                        };
+
+                                        var rowsAffected = await _dbConnection.ExecuteAsync("Update_TransactionDetails", parameters, commandType: CommandType.StoredProcedure);
+
+                                        await SaveActivityLogTracker("Update_TransactionDetails executed successfully. Rows affected: " + rowsAffected, 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "NepalRemit update transaction", entity.Branch_ID, Client_ID);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Message1 = ex.Message;
+                                        await SaveErrorLogAsync(ex.ToString(), DateTime.Now, "Proceed", entity.user_id, entity.Branch_ID, Client_ID, 0);
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                await SaveActivityLogTracker("NepalRemit CommitTransaction failed with code: " + codeCommit + " - Message: " + dJson.message, 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "NepalRemit Proceed", entity.Branch_ID, Client_ID);
+                            }
+                        }
+                        else
+                        {
+                            await SaveActivityLogTracker("NepalRemit CommitTransaction confirmationId is null or empty", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "NepalRemit Proceed", entity.Branch_ID, Client_ID);
+                        }
+                    }
+                    else
+                    {
+                        await SaveActivityLogTracker("NepalRemit SendTransaction failed with code: " + dJson.code + " - Message: " + dJson.message, 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "NepalRemit Proceed", entity.Branch_ID, Client_ID);
+                    }
+
+                    return new ProceedResponseViewModel
+                    {
+                        Status = "success",
+                        StatusCode = 0,
+                        Message = "Transaction processed successfully",
+                        ApiId = Transaction_ID,
+                        AgentRate = AgentRateapi,
+                        ApiStatus = apistatus,
+                        ExtraFields = new List<string> { "", "" }
+                    };
+                }
+                catch (Exception ex)
+                {
+                    await SaveErrorLogAsync(ex.ToString(), DateTime.Now, "Proceed", entity.user_id, entity.Branch_ID, Client_ID, 0);
+
+                    return new ProceedResponseViewModel
+                    {
+                        Status = "fail",
+                        StatusCode = 2,
+                        Message = " Error Message: " + ex.Message.ToString(),
+                        ApiId = Transaction_ID,
+                        AgentRate = AgentRateapi,
+                        ApiStatus = apistatus,
+                        ExtraFields = new List<string> { "", "" }
+                    };
+                }
+                #endregion Nepal Remit
+            }
             else if (api_id == 2)
             {
                 #region GCCRemit_Send_Transfer

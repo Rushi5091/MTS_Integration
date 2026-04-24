@@ -15,6 +15,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
+using System.Web;
 using System.Xml;
 using TransferZero.Sdk.Api;
 using TransferZero.Sdk.Client;
@@ -1209,5 +1210,48 @@ public class BaseRepository<T> : IBaseRepository<T> where T : class
             SaveErrorLogAsync(whereClause + "whereClause Error in GetApiWalletBankAccountDetails: " + ex.ToString(),DateTime.Now,"GetApiWalletBankAccountDetails",0, 0, 0, 0);
             return false;            
         }
+    }
+
+    public static string GenerateHmacAuthorizationHeader(string httpMethod, string url, string appId, string apiKey, string requestBody)
+    {
+        // Step 1: Normalize inputs
+        httpMethod = httpMethod.ToUpperInvariant();
+        string requestUri = HttpUtility.UrlEncode(url.ToLowerInvariant());
+
+        // Step 2: Generate Nonce and Timestamp
+        string nonce = Guid.NewGuid().ToString("N");
+        string timestamp = ((int)(DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1))).TotalSeconds).ToString();
+
+        // Step 3: Hash request body (if present) with MD5 and convert to Base64
+        string contentHashBase64 = string.Empty;
+        if (!string.IsNullOrEmpty(requestBody))
+        {
+            byte[] contentBytes = Encoding.UTF8.GetBytes(requestBody);
+            using (MD5 md5 = MD5.Create())
+            {
+                byte[] hashBytes = md5.ComputeHash(contentBytes);
+                contentHashBase64 = Convert.ToBase64String(hashBytes);
+            }
+        }
+
+        // Step 4: Create the raw signature string (no delimiters)
+        string signatureRawData = string.Concat(appId, httpMethod, requestUri, timestamp, nonce, contentHashBase64);
+
+        // Step 5: Compute HMACSHA256 with API Key (convert to Base64 first)
+        byte[] secretKeyBytes = Convert.FromBase64String(apiKey);
+        byte[] signatureBytes;
+        using (HMACSHA256 hmac = new HMACSHA256(secretKeyBytes))
+        {
+            byte[] rawSignatureBytes = Encoding.UTF8.GetBytes(signatureRawData);
+            signatureBytes = hmac.ComputeHash(rawSignatureBytes);
+        }
+
+        string signature = Convert.ToBase64String(signatureBytes);
+
+        // Step 6: Construct authorization header
+        string authorizationHeader = $"hmacauth {appId}:{signature}:{nonce}:{timestamp}";
+
+
+        return authorizationHeader;
     }
 }
