@@ -11,7 +11,7 @@ using RestSharp;
 using System.Data;
 using System.Net;
 using System.Text;
-
+using System.Xml;
 namespace Project.Infrastructure.Repositories
 {
     public class BranchListRepository : BaseRepository<BranchList>, IBranchListRepository
@@ -255,7 +255,264 @@ namespace Project.Infrastructure.Repositories
 
                     }
                 }
+                else if (api_id == 2) // GCC Remit Transaction
+                {
+                    #region gcc_get_branchlist
 
+                    apistatus = 0;
+                    string custCountryName = "";
+
+                    string countrycode = entity.Country_Code;
+
+                    try
+                    {
+                        await SaveActivityLogTracker("Get GCC Remit Branch List 1", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(entity.user_id), "BranchList", entity.Branch_ID, Client_ID);
+
+                        storedProcedureName = "Country_Search";
+                        var valuesCountry = new
+                        {
+                            ISO_Code = Convert.ToString(countrycode).Trim()
+                        };
+                        var countryResult = await _dbConnection.QueryAsync(storedProcedureName, valuesCountry, commandType: CommandType.StoredProcedure);
+                        dynamic dt_country = countryResult.FirstOrDefault();
+                        if (dt_country != null)
+                        {
+                            custCountryName = Convert.ToString(dt_country.Country_Name).ToUpper().Trim();
+                        }
+
+                        // Country Code Check Here
+                        if (countrycode == "FR" || countrycode == "DE" || countrycode == "BE" || countrycode == "BG" || countrycode == "DK" || countrycode == "CH"
+                        || countrycode == "SE" || countrycode == "ES" || countrycode == "SI" || countrycode == "NL" || countrycode == "IT"
+                        || countrycode == "LV" || countrycode == "LI" || countrycode == "LT" || countrycode == "LU" || countrycode == "MT" || countrycode == "MC" || countrycode == "NO"
+                        || countrycode == "PL" || countrycode == "PT" || countrycode == "RO" || countrycode == "SM" || countrycode == "SK" || countrycode == "CZ" || countrycode == "AT"
+                        || countrycode == "HR" || countrycode == "CY" || countrycode == "EE" || countrycode == "FI" || countrycode == "GR" || countrycode == "HU" || countrycode == "IS" || countrycode == "IE")
+                        {
+                            countrycode = "EU";
+                        }
+
+                        // Gat PaymentMode Here New Update from GCC team
+                        string countryCurrency = "";
+                        if ("EU" == countrycode) { countryCurrency = "EUR"; }
+
+                        int Transfer_ID = 0;
+                        try
+                        {
+                            Transfer_ID = Convert.ToInt32(result.Transfer_ID);
+                        }
+                        catch { }
+
+                        if (Transfer_ID > 0)
+                        {
+                            storedProcedureName = "View_Transfer";
+                            var valuesTransfer = new
+                            {
+                                Transaction_ID = Transfer_ID
+                            };
+                            var transferResult = await _dbConnection.QueryAsync(storedProcedureName, valuesTransfer, commandType: CommandType.StoredProcedure);
+                            dynamic dt_transfer = transferResult.FirstOrDefault();
+                            if (dt_transfer != null && countryCurrency == "")
+                            {
+                                countryCurrency = Convert.ToString(dt_transfer.Currency_Code).ToUpper().Trim();
+                            }
+                        }
+                        else
+                        {
+                            try
+                            {
+                                if (countryCurrency == "")
+                                    countryCurrency = Convert.ToString(result.currencyTitle).ToUpper().Trim();
+                            }
+                            catch { }
+                        }
+
+                        var optionsPaymentMode = new RestClientOptions(apiurl)
+                        {
+                            MaxTimeout = -1
+                        };
+                        var clientPaymentMode = new RestClient(optionsPaymentMode);
+                        var requestPaymentMode = new RestRequest()
+                        {
+                            Method = Method.Post
+                        };
+                        requestPaymentMode.AddHeader("Content-Type", "text/xml; charset=utf-8");
+                        requestPaymentMode.AddHeader("SOAPAction", "http://tempuri.org/ISendAPI/GetPaymentModeList");
+
+                        var bodyPaymentMode = @"<soapenv:Envelope xmlns:soapenv=""http://schemas.xmlsoap.org/soap/envelope/"" xmlns:tem=""http://tempuri.org/"" xmlns:grem=""http://schemas.datacontract.org/2004/07/GRemitWCFService.Send"">" + "\n" +
+                            @"   <soapenv:Header/>" + "\n" +
+                            @"   <soapenv:Body>" + "\n" +
+                            @"      <tem:GetPaymentModeList>" + "\n" +
+                            @"         <tem:req>" + "\n" +
+                            @"            <grem:CountryCode>" + countrycode + "</grem:CountryCode>" + "\n" +
+                            @"            <grem:CurrencyCode>" + countryCurrency + "</grem:CurrencyCode>" + "\n" +
+                            @"            <grem:Password>" + apipass + "</grem:Password>" + "\n" +
+                            @"            <grem:SecurityKey>" + accesscode + "</grem:SecurityKey>" + "\n" +
+                            @"            <grem:UniqueID>" + apiuser + "</grem:UniqueID>" + "\n" +
+                            @"         </tem:req>" + "\n" +
+                            @"      </tem:GetPaymentModeList>" + "\n" +
+                            @"   </soapenv:Body>" + "\n" +
+                            @"</soapenv:Envelope>";
+
+                        requestPaymentMode.AddParameter("text/xml; charset=utf-8", bodyPaymentMode, ParameterType.RequestBody);
+
+                        await SaveActivityLogTracker("Get GCC GetPaymentModeList request parameter: <br/>" + bodyPaymentMode + "", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(entity.user_id), "BranchList", entity.Branch_ID, Client_ID);
+
+                        RestResponse responsePaymentMode = clientPaymentMode.Execute(requestPaymentMode);
+
+                        await SaveActivityLogTracker("Get GCC GetPaymentModeList response parameter: <br/>" + responsePaymentMode.Content + "", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(entity.user_id), "BranchList", entity.Branch_ID, Client_ID);
+
+                        XmlDocument xmlDocPaymentMode = new XmlDocument();
+                        xmlDocPaymentMode.LoadXml(responsePaymentMode.Content);
+                        XmlNodeList nodeListPaymentMode = xmlDocPaymentMode.GetElementsByTagName("Table");
+
+                        foreach (XmlNode node1 in nodeListPaymentMode)
+                        {
+                            string json = Newtonsoft.Json.JsonConvert.SerializeXmlNode(node1);
+                            var obj1 = Newtonsoft.Json.Linq.JObject.Parse(json);
+                            string PaymentModeName = Convert.ToString(obj1["Table"]["PaymentModeName"]).ToUpper().Trim();
+                            string PaymentModeCode = Convert.ToString(obj1["Table"]["PaymentModeCode"]).Trim();
+
+                            // In Calyx system 1 for Bank, 2 for Cash, 3 for Mobile Wallet
+                            if (result.PaymentDepositType_ID == 1) // BANK
+                            {
+                                if (PaymentModeName.Contains("MOBILE") || PaymentModeName.Contains("CASH"))
+                                {
+                                    continue;
+                                }
+                            }
+                            else if (result.PaymentDepositType_ID == 2) // CASH
+                            {
+                                if (PaymentModeName.Contains("MOBILE") || PaymentModeName.Contains("CREDIT") || PaymentModeName.Contains("IMPS") || PaymentModeName.Contains("RTGS"))
+                                {
+                                    continue;
+                                }
+                            }
+                            else if (result.PaymentDepositType_ID == 3) // Mobile Wallet
+                            {
+                                if (PaymentModeName.Contains("Home") || PaymentModeName.Contains("Pickup") || PaymentModeName.Contains("CREDIT") || PaymentModeName.Contains("IMPS") || PaymentModeName.Contains("RTGS"))
+                                {
+                                    continue;
+                                }
+                            }
+
+                            try
+                            {
+                                var optionsBranchList = new RestClientOptions(apiurl)
+                                {
+                                    MaxTimeout = -1
+                                };
+                                var clientBranchList = new RestClient(optionsBranchList);
+                                var requestBranchList = new RestRequest()
+                                {
+                                    Method = Method.Post
+                                };
+                                requestBranchList.AddHeader("Content-Type", "text/xml; charset=utf-8");
+                                requestBranchList.AddHeader("SOAPAction", "http://tempuri.org/ISendAPI/GetBranchList");
+
+                                var bodyBranchList = @"<soapenv:Envelope xmlns:soapenv=""http://schemas.xmlsoap.org/soap/envelope/"" xmlns:tem=""http://tempuri.org/"" xmlns:grem=""http://schemas.datacontract.org/2004/07/GRemitWCFService.Send"">" + "\n" +
+                                    @"   <soapenv:Header/>" + "\n" +
+                                    @"   <soapenv:Body>" + "\n" +
+                                    @"      <tem:GetBranchList>" + "\n" +
+                                    @"         <tem:req>" + "\n" +
+                                    @"            <grem:CityCode>0</grem:CityCode>" + "\n" +
+                                    @"            <grem:CountryCode>" + countrycode + "</grem:CountryCode>" + "\n" +
+                                    @"            <grem:CurrencyCode>" + countryCurrency + "</grem:CurrencyCode>" + "\n" +
+                                    @"            <grem:Password>" + apipass + "</grem:Password>" + "\n" +
+                                    @"            <grem:PaymentModeCode>" + PaymentModeCode + "</grem:PaymentModeCode>" + "\n" +
+                                    @"            <grem:Search></grem:Search>" + "\n" +
+                                    @"            <grem:SecurityKey>" + accesscode + "</grem:SecurityKey>" + "\n" +
+                                    @"            <grem:UniqueID>" + apiuser + "</grem:UniqueID>" + "\n" +
+                                    @"         </tem:req>" + "\n" +
+                                    @"      </tem:GetBranchList>" + "\n" +
+                                    @"   </soapenv:Body>" + "\n" +
+                                    @"</soapenv:Envelope>";
+
+                                requestBranchList.AddParameter("text/xml; charset=utf-8", bodyBranchList, ParameterType.RequestBody);
+
+                                await SaveActivityLogTracker("Get GCC GetBranchList request parameter: <br/>" + bodyBranchList + "", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(entity.user_id), "BranchList", entity.Branch_ID, Client_ID);
+
+                                RestResponse responseBranchList = clientBranchList.Execute(requestBranchList);
+
+                                await SaveActivityLogTracker("Get GCC GetBranchList response parameter: <br/>" + responseBranchList.Content + "", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(entity.user_id), "BranchList", entity.Branch_ID, Client_ID);
+
+                                XmlDocument xmlDocBranchList = new XmlDocument();
+                                xmlDocBranchList.LoadXml(responseBranchList.Content);
+                                XmlNodeList nodeListBranch = xmlDocBranchList.GetElementsByTagName("Table");
+
+                                foreach (XmlNode node2 in nodeListBranch)
+                                {
+                                    string json2 = Newtonsoft.Json.JsonConvert.SerializeXmlNode(node2);
+                                    var obj2 = Newtonsoft.Json.Linq.JObject.Parse(json2);
+                                    string paymentMode = Convert.ToString(obj2["Table"]["PaymentModeName"]).Trim();
+                                    string branchCode = Convert.ToString(obj2["Table"]["BranchCode"]).Trim();
+                                    string bankNM = Convert.ToString(obj2["Table"]["BranchName"]).Trim();
+                                    string branchAddress = Convert.ToString(obj2["Table"]["BranchAddress"]).Trim().ToLower();
+
+                                    branchDetails.Add(new BranchDetailViewModel
+                                    {
+                                        BranchCode = branchCode,
+                                        City = custCountryName,
+                                        Country = custCountryName,
+                                        Address = "(" + bankNM + " : " + paymentMode + " : " + branchAddress + ")",
+                                        ApiId = api_id.Value
+                                    });
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Message1 = ex.Message;
+                                await SaveErrorLogAsync("Get GCC GetBranchList exception: <br/> " + ex.ToString(), DateTime.Now, "BranchList", entity.user_id, entity.Branch_ID, Client_ID, 0);
+                            }
+                        }
+
+                        // Filter down to the beneficiary's last used collection point, if one exists
+                        try
+                        {
+                            if (Convert.ToInt32(result.Beneficiary_ID) != 0)
+                            {
+                                storedProcedureName = "GetLastBenf_POC";
+                                var valuesLastBenf = new
+                                {
+                                    _Beneficiary_ID = Convert.ToInt32(result.Beneficiary_ID),
+                                    _ApiId = api_id
+                                };
+                                var lastBenfResult = await _dbConnection.QueryAsync(storedProcedureName, valuesLastBenf, commandType: CommandType.StoredProcedure);
+                                dynamic dt_CollPoint = lastBenfResult.FirstOrDefault();
+
+                                if (dt_CollPoint != null)
+                                {
+                                    string[] parts = Convert.ToString(dt_CollPoint.bank_code).Split(new string[] { " - " }, StringSplitOptions.None);
+                                    string apibranchCode = parts.Length > 0 ? parts[0].Trim() : string.Empty;
+
+                                    var existingBranch = branchDetails.FirstOrDefault(b => b.BranchCode == apibranchCode);
+                                    if (existingBranch != null)
+                                    {
+                                        branchDetails = new List<BranchDetailViewModel> { existingBranch };
+                                    }
+                                    else
+                                    {
+                                        await SaveActivityLogTracker("check existingRow " + apibranchCode + "", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(entity.user_id), "BranchList", entity.Branch_ID, Client_ID);
+                                    }
+                                }
+                                else
+                                {
+                                    await SaveActivityLogTracker("get data of API_BranchDetails ", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(entity.user_id), "BranchList", entity.Branch_ID, Client_ID);
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Message1 = ex.Message;
+                            await SaveErrorLogAsync("GetLastBenf_POC block Error: <br/> " + ex.ToString(), DateTime.Now, "BranchList", entity.user_id, entity.Branch_ID, Client_ID, 0);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Message1 = ex.Message;
+                        await SaveErrorLogAsync("Get GCC Remit Branch List Error exception: <br/> " + ex.ToString(), DateTime.Now, "BranchList", entity.user_id, entity.Branch_ID, Client_ID, 0);
+                    }
+
+                    #endregion
+                }
 
                 else if (api_id == 15)
                 {

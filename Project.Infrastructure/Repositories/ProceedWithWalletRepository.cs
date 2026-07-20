@@ -68,6 +68,70 @@ namespace Project.Infrastructure.Repositories
             string? SecurityKey = _appSettings.SecurityKey;
             string whereclause = " and a.ID=" + api_id;
             dynamic CustWalletBank_Details = null;
+            dynamic parmissions_Details = null;
+
+            #region get permissions
+            try
+            {
+                await SaveActivityLogTracker("GetPermissions -- Start : <br/>" + Customer_ID, 0, DateTime.Now, 0, "0", entity.Customer_ID, 0, "CreateNGNWallet", 2, 1);
+
+                string parmissions_whereclause = " and PID in (250); ";
+                var parmissionsProcedure = "GetPermissions";
+                var parmissionsparameters = new
+                {
+                    _whereclause = parmissions_whereclause,
+                    _Client_ID = Client_ID
+                };
+
+                var parmissionslist = await _dbConnection.QueryAsync(parmissionsProcedure, parmissionsparameters, commandType: CommandType.StoredProcedure);
+
+                await SaveActivityLogTracker("GetPermissions -- Successful : <br/>", 0, DateTime.Now, 0, "0", entity.Customer_ID, 0, "CreateNGNWallet", 2, 1);
+
+                var permissionsDict = parmissionslist
+                    .ToDictionary(
+                        p => Convert.ToInt32(p.PID),
+                        p => Convert.ToInt32(p.Status_ForCustomer)
+                    );
+
+                int Transaction_paywithapiwallet = permissionsDict.ContainsKey(250) ? permissionsDict[250] : 1;
+
+                await SaveActivityLogTracker("PID 250 Status_ForCustomer : " + Transaction_paywithapiwallet, 0, DateTime.Now, 0, "0", entity.Customer_ID, 0, "CreateNGNWallet", 2, 1);
+
+                if (Transaction_paywithapiwallet == 1)
+                {
+                    await SaveActivityLogTracker("PID 250 - API Wallet Permission is OFF Transaction_paywithapiwallet " + Transaction_paywithapiwallet, 0, DateTime.Now, 0, "0", entity.Customer_ID, 0, "CreateNGNWallet", 2, 1);
+                    return new ProceedResponseViewModel
+                    {
+                        Status = "Failed",
+                        StatusCode = 2,
+                        Message = "The wallet service api is currently unavailable",
+                        ApiId = api_id,
+                        AgentRate = AgentRateapi,
+                        ApiStatus = apistatus,
+                        ExtraFields = new List<string> { "", "" }
+                    };
+                }
+                else
+                {
+                    await SaveActivityLogTracker("PID 250 - API Wallet Permission is on "+ Transaction_paywithapiwallet, 0, DateTime.Now, 0, "0", entity.Customer_ID, 0, "CreateNGNWallet", 2, 1);
+                }
+                    
+            }
+            catch (Exception ex)
+            {
+                await SaveActivityLogTracker("Error in GetPermissions : <br/>" + ex.ToString(), 0, DateTime.Now, 0, "0", entity.Customer_ID, 0, "CreateNGNWallet", 2, 1);
+                return new ProceedResponseViewModel
+                {
+                    Status = "Failed",
+                    StatusCode = 2,
+                    Message = "Failed to check Permissions Api Wallet",
+                    ApiId = api_id,
+                    AgentRate = AgentRateapi,
+                    ApiStatus = apistatus,
+                    ExtraFields = new List<string> { "", "" }
+                };
+            }
+            #endregion get permissions
 
             #region we check the account here and that account created api id
             try

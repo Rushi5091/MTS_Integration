@@ -10,7 +10,7 @@ using Project.Core.Entities.Business;
 using System.Net;
 using System.Text;
 using Newtonsoft.Json;
-
+using System.Xml;
 
 namespace Project.Infrastructure.Repositories
 {
@@ -342,6 +342,164 @@ namespace Project.Infrastructure.Repositories
                 }
                 #endregion
             }
+            else if (api_id == 2) // GCC Remit
+            {
+                #region gccremit
+
+                string Customer_ID = result.Customer_ID.ToString();
+                string ReferenceNo = result.ReferenceNo.ToString();//
+                await SaveActivityLogTracker("GCC Remit check Status API start: <br/>", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "TransactionStatus", entity.Branch_ID, Client_ID);
+
+                TransactionStatusResponseViewModel response = new TransactionStatusResponseViewModel();
+
+                try
+                {
+                    ServicePointManager.Expect100Continue = true;
+                    ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls
+                           | SecurityProtocolType.Tls11
+                           | SecurityProtocolType.Tls12
+                           | SecurityProtocolType.Ssl3;
+
+                    var options = new RestClientOptions(apiurl)
+                    {
+                        MaxTimeout = -1
+                    };
+                    var client = new RestClient(options);
+                    var request = new RestRequest()
+                    {
+                        Method = Method.Post
+                    };
+
+                    request.AddHeader("Content-Type", "text/xml; charset=utf-8");
+                    request.AddHeader("SOAPAction", "http://tempuri.org/ISendAPI/GetTransferStatus"); // Operation command
+
+                    var body = @"<soapenv:Envelope xmlns:soapenv=""http://schemas.xmlsoap.org/soap/envelope/"" xmlns:tem=""http://tempuri.org/"" xmlns:grem=""http://schemas.datacontract.org/2004/07/GRemitWCFService.Send"">" + "\n" +
+                        @"   <soapenv:Header/>" + "\n" +
+                        @"   <soapenv:Body>" + "\n" +
+                        @"      <tem:GetTransferStatus>" + "\n" +
+                        @"         <!--Optional:-->" + "\n" +
+                        @"         <tem:req>" + "\n" +
+                        @"            <!--Optional:-->" + "\n" +
+                        @"            <grem:Password>" + apipass + "</grem:Password>" + "\n" +
+                        @"            <!--Optional:-->" + "\n" +
+                        @"            <grem:SecurityKey>" + accesscode + "</grem:SecurityKey>" + "\n" +
+                        @"            <!--Optional:-->" + "\n" +
+                        @"            <grem:TransactionNo>" + ReferenceNo + "</grem:TransactionNo>" + "\n" +
+                        @"            <!--Optional:-->" + "\n" +
+                        @"            <grem:UniqueID>" + apiuser + "</grem:UniqueID>" + "\n" +
+                        @"         </tem:req>" + "\n" +
+                        @"      </tem:GetTransferStatus>" + "\n" +
+                        @"   </soapenv:Body>" + "\n" +
+                        @"</soapenv:Envelope>" + "\n" +
+                        @"";
+
+                    request.AddParameter("text/xml; charset=utf-8", body, ParameterType.RequestBody);
+                    await SaveActivityLogTracker("GCC Remit check Status - request parameters: <br/>" + body + "", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "TransactionStatus", entity.Branch_ID, Client_ID);
+
+                    RestResponse restResponse = client.Execute(request);
+
+                    await SaveActivityLogTracker("GCC Remit check Status - response parameters: <br/>" + restResponse.Content + "", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "TransactionStatus", entity.Branch_ID, Client_ID);
+
+                    XmlDocument xmlDoc = new XmlDocument();
+                    xmlDoc.LoadXml(restResponse.Content);
+                    XmlNodeList nodeList = xmlDoc.GetElementsByTagName("s:Envelope");
+                    string responseCode = "", messageResponse = "", txstatus = "";
+
+                    foreach (XmlNode node1 in nodeList)
+                    {
+                        string json = Newtonsoft.Json.JsonConvert.SerializeXmlNode(node1);
+                        var obj1 = Newtonsoft.Json.Linq.JObject.Parse(json);
+                        messageResponse = Convert.ToString(obj1["s:Envelope"]["s:Body"]["GetTransferStatusResponse"]["GetTransferStatusResult"]["a:ResponseMessage"]);
+                        responseCode = Convert.ToString(obj1["s:Envelope"]["s:Body"]["GetTransferStatusResponse"]["GetTransferStatusResult"]["a:ResponseCode"]);
+                        txstatus = Convert.ToString(obj1["s:Envelope"]["s:Body"]["GetTransferStatusResponse"]["GetTransferStatusResult"]["a:TransactionStatus"]);
+                    }
+
+                    if (responseCode == "001")
+                    {
+                        await SaveActivityLogTracker("GCC Remit check Status - response code: <br/>" + responseCode + "", 0, DateTime.Now, 0, Transaction_ID.ToString(), entity.user_id, Convert.ToInt32(Customer_ID), "TransactionStatus", entity.Branch_ID, Client_ID);
+
+                        if (txstatus == "Paid")
+                        {
+                            response.StatusCode = 0;
+                            response.Status = "Paid";
+                            response.Message = "Transaction Paid Successfully";
+                        }
+                        else if (txstatus.StartsWith("fail", StringComparison.OrdinalIgnoreCase))
+                        {
+                            response.StatusCode = 5;
+                            response.Status = txstatus;
+                            response.Message = messageResponse;
+                        }
+                        else if (txstatus == "Pending Agent Approval" || txstatus == "Pending Agency Approval" || txstatus == "Pending Modify Approval")
+                        {
+                            response.StatusCode = 1;
+                            response.Status = "PENDING";
+                            response.Message = "Transaction Status is 'Pending'";
+                        }
+                        else if (txstatus == "Processed" || txstatus == "Unpaid")
+                        {
+                            response.StatusCode = 1;
+                            response.Status = "Processed";
+                            response.Message = "Transaction Status is 'Processed'";
+                        }
+                        else if (txstatus == "Agent Blocked" || txstatus == "Agency Blocked" || txstatus == "AML Alert" || txstatus == "Compliance Alert" || txstatus == "Black List Alert")
+                        {
+                            response.StatusCode = 2;
+                            response.Status = "Blocked";
+                            response.Message = "Transaction Status is 'Blocked'";
+                        }
+                        else if (txstatus == "Cancel Request - Unpaid" || txstatus == "Cancel Request - Processed" || txstatus == "Cancelled With Charges" || txstatus == "Cancelled Without Charges" || txstatus == "Auto Cancelled" || txstatus == "LVMT Alert")
+                        {
+                            response.StatusCode = 2;
+                            response.Status = "Cancelled";
+                            response.Message = "Transaction Status is 'Cancelled'";
+                        }
+                        else
+                        {
+                            response.StatusCode = 4;
+                            response.Status = "Un-Paid";
+                            response.Message = "Transaction Status is '" + txstatus + "'";
+                        }
+                    }
+                    else
+                    {
+                        response.StatusCode = 4;
+                        response.Status = "Un-Paid";
+
+                        if (responseCode == "025")
+                            response.Message = "Transaction Status is 'Invalid Transaction No. " + ReferenceNo + " '";
+                        else if (responseCode == "026")
+                            response.Message = "Transaction Status is 'Insufficient Funds to process Transaction.'";
+                        else if (responseCode == "027")
+                            response.Message = "Transaction Status is 'Transaction Not available for Payout.'";
+                        else if (responseCode == "028")
+                            response.Message = "Transaction Status is 'No Transaction found'";
+                        else if (responseCode == "029")
+                            response.Message = "Transaction Status is 'Transaction does not belongs to your network'";
+                        else if (responseCode == "030")
+                            response.Message = "Transaction Status is 'Transaction Status Update Failed.'";
+                        else if (responseCode == "041")
+                            response.Message = "Transaction Status is 'Transaction Modification Request Failed.'";
+                        else
+                            response.Message = "Transaction Status is '" + txstatus + "'";
+                    }
+
+                    // common fields
+                    response.ApiId = Transaction_ID;
+                    response.AgentRate = AgentRateapi;
+                    response.ApiStatus = apistatus;
+                    response.ExtraFields = new List<string> { "", "" };
+
+                    return response;
+                }
+                catch (Exception ex)
+                {
+                    await SaveErrorLogAsync("API GCC Remit transaction Status ERROR " + ex.ToString() + " " + entity.Transaction_ID, DateTime.Now, "CheckStatus", entity.user_id, entity.Branch_ID, Client_ID, 0);
+                }
+
+                #endregion
+            }
+
             else if (api_id == 15)
             {
                 #region amal
